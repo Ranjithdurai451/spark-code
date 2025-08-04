@@ -35,7 +35,7 @@ const Header = () => {
 
           <div className="flex items-center gap-2">
             {/* Enhanced Practice Mode Button */}
-            <Button
+            {/* <Button
               onClick={handleNavigateToPractice}
               disabled={isNavigating}
               className={`
@@ -57,7 +57,7 @@ const Header = () => {
                   Practice Mode
                 </>
               )}
-            </Button>
+            </Button> */}
 
             {/* Settings Dialog */}
             <SettingsDialog />

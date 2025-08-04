@@ -20,9 +20,9 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // if (isMobile) {
-  //   return <MobileNotSupported />;
-  // }
+  if (isMobile) {
+    return <MobileNotSupported />;
+  }
 
   return (
     <div className="flex flex-col h-screen bg-muted/20">
