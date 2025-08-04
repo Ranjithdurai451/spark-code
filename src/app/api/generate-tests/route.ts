@@ -426,7 +426,7 @@ function detectLanguageFromCode(code: string): string {
 }
 
 // Strict test case validation - NO fallbacks allowed
-export function validateTestCaseFormat(testCases: any): {
+ function validateTestCaseFormat(testCases: any): {
   isValid: boolean;
   errors: string[];
 } {
@@ -473,7 +473,7 @@ export function validateTestCaseFormat(testCases: any): {
 }
 
 // Enhanced test case sanitization - STRICT, no fallbacks
-export function sanitizeTestCases(rawOutput: string): {
+ function sanitizeTestCases(rawOutput: string): {
   testCases: any[] | null;
   errors: string[];
 } {
