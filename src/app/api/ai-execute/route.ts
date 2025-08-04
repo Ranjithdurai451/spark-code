@@ -15,75 +15,303 @@ const LANGUAGE_MAP: Record<string, number> = {
   c: 50,
 };
 
-const AI_PROMPT_TEMPLATE = `
-You are a {language} code execution wrapper generator for LeetCode solutions. Your task is to create an executable wrapper for user code.
+const ENHANCED_PROMPTS = {
+  java: `You are a Java code generator. Create a complete, runnable Java program that executes user code with test inputs.
 
-ABSOLUTE RULES:
-1. PRESERVE the user's code EXACTLY as written - no changes allowed
-2. Add ONLY the necessary wrapper code for execution
-3. Parse input from: {input}
-4. Format output to match: {expectedOutput}
-5. Use the EXACT input from the request, not examples in the code
-6. DO NOT use any external libraries
+CONTEXT: This is for algorithmic problem solving. The user has written a solution function that needs to be tested.
 
-CONVERSION REQUIREMENTS:
-- Implement conversion functions for parameter types
-- Implement serialization functions for return types
-- Handle common LeetCode data structures:
-  • Array: Convert JSON array to language-native array
-  • Linked List: Convert JSON array to ListNode structure
-  • Tree: Convert JSON array to TreeNode structure
-  • Primitive types: Direct conversion
+USER'S SOLUTION CODE (DO NOT MODIFY):
+{userCode}
 
-OUTPUT FORMAT:
-- Return primitive values directly
-- Serialize arrays as [1,2,3]
-- Serialize linked lists as [1,2,3]
-- Serialize trees as [1,2,3]
+TEST INPUT: {input}
+EXPECTED OUTPUT: {expectedOutput}
 
-EXAMPLE STRUCTURE (Java):
-public class Main {{
-    // User's solution (preserved exactly)
-    {user_code}
-    
-    // Conversion methods
-    public static ListNode arrayToListNode(int[] arr) {{
-        // Implementation
-    }}
-    
-    public static String listNodeToString(ListNode head) {{
-        // Implementation
-    }}
-    
-    public static void main(String[] args) {{
-        // Parse input directly
-        Object[] parsedInput = parseInput("{input}");
+CRITICAL REQUIREMENTS:
+1. PRESERVE user code exactly - no formatting, comments, or modifications
+2. Create a Main class with main method
+3. Parse input {input} into appropriate Java variables
+4. Call the user's function with parsed variables
+5. Print result using System.out.println()
+
+INPUT PARSING RULES:
+- Array input [1,2,3] → int[] arr = {1,2,3};
+- Multiple params [arr, target] → separate variables
+- String input "hello" → String str = "hello";
+- Nested arrays [[1,2],[3,4]] → int[][] matrix = {{1,2},{3,4}};
+
+OUTPUT FORMATTING:
+- Arrays: Use Arrays.toString() for 1D, Arrays.deepToString() for 2D+
+- Primitives: Direct System.out.println()
+- Objects: Use .toString() or custom formatting
+
+EXAMPLE TRANSFORMATION:
+Input: [[1,2,3], 5]
+Variables:
+int[] nums = {1,2,3};
+int target = 5;
+
+Generate ONLY the complete Java code with proper imports:`,
+
+  python: `You are a Python code generator. Create a complete, runnable Python program that executes user code with test inputs.
+
+CONTEXT: This is for algorithmic problem solving. The user has written a solution function that needs to be tested.
+
+USER'S SOLUTION CODE (DO NOT MODIFY):
+{userCode}
+
+TEST INPUT: {input}
+EXPECTED OUTPUT: {expectedOutput}
+
+CRITICAL REQUIREMENTS:
+1. PRESERVE user code exactly - no formatting, comments, or modifications
+2. Parse input {input} into appropriate Python variables
+3. Call the user's function with parsed variables
+4. Print result using print()
+
+INPUT PARSING RULES:
+- Array input [1,2,3] → nums = [1,2,3]
+- Multiple params [arr, target] → separate variables
+- String input "hello" → s = "hello"
+- Nested structures preserved as-is
+
+OUTPUT FORMATTING:
+- Lists/arrays: Direct print() outputs correctly
+- Other types: Direct print()
+
+EXAMPLE TRANSFORMATION:
+Input: [[1,2,3], 5]
+Variables:
+nums = [1,2,3]
+target = 5
+
+Generate ONLY the complete Python code:`,
+
+  javascript: `You are a JavaScript code generator. Create a complete, runnable JavaScript program that executes user code with test inputs.
+
+CONTEXT: This is for algorithmic problem solving. The user has written a solution function that needs to be tested.
+
+USER'S SOLUTION CODE (DO NOT MODIFY):
+{userCode}
+
+TEST INPUT: {input}
+EXPECTED OUTPUT: {expectedOutput}
+
+CRITICAL REQUIREMENTS:
+1. PRESERVE user code exactly - no formatting, comments, or modifications
+2. Parse input {input} into appropriate JavaScript variables
+3. Call the user's function with parsed variables
+4. Print result using console.log()
+
+INPUT PARSING RULES:
+- Array input [1,2,3] → let nums = [1,2,3];
+- Multiple params [arr, target] → separate variables
+- String input "hello" → let s = "hello";
+- Objects/arrays preserved as-is
+
+OUTPUT FORMATTING:
+- Arrays/Objects: console.log() handles formatting automatically
+- Primitives: Direct console.log()
+
+EXAMPLE TRANSFORMATION:
+Input: [[1,2,3], 5]
+Variables:
+let nums = [1,2,3];
+let target = 5;
+
+Generate ONLY the complete JavaScript code:`,
+
+  cpp: `You are a C++ code generator. Create a complete, runnable C++ program that executes user code with test inputs.
+
+CONTEXT: This is for algorithmic problem solving. The user has written a solution function that needs to be tested.
+
+USER'S SOLUTION CODE (DO NOT MODIFY):
+{userCode}
+
+TEST INPUT: {input}
+EXPECTED OUTPUT: {expectedOutput}
+
+CRITICAL REQUIREMENTS:
+1. PRESERVE user code exactly - no formatting, comments, or modifications
+2. Include necessary headers: #include <iostream>, <vector>, <string>, etc.
+3. Parse input {input} into appropriate C++ variables
+4. Call the user's function with parsed variables
+5. Print result using cout
+
+INPUT PARSING RULES:
+- Array input [1,2,3] → vector<int> nums = {1,2,3};
+- Multiple params [arr, target] → separate variables
+- String input "hello" → string s = "hello";
+- 2D arrays [[1,2],[3,4]] → vector<vector<int>> matrix = {{1,2},{3,4}};
+
+OUTPUT FORMATTING:
+- Vectors: Print elements with spaces or use custom loop
+- Primitives: Direct cout <<
+- Strings: Direct cout <<
+
+EXAMPLE TRANSFORMATION:
+Input: [[1,2,3], 5]
+Variables:
+vector<int> nums = {1,2,3};
+int target = 5;
+
+Required headers and using namespace std;
+
+Generate ONLY the complete C++ code with proper includes:`
+};
+
+// Enhanced function to detect function name and parameters from user code
+function analyzeUserCode(code: string, language: string): { functionName?: string, paramTypes?: string[] } {
+  const analysis: { functionName?: string, paramTypes?: string[] } = {};
+  
+  try {
+    switch (language) {
+      case 'java':
+        // Look for public method patterns
+        const javaMatch = code.match(/public\s+(?:static\s+)?(\w+(?:<[^>]+>)?(?:\[\])*)\s+(\w+)\s*\([^)]*\)/);
+        if (javaMatch) {
+          analysis.functionName = javaMatch[2];
+        }
+        break;
         
-        // Convert to required types
-        Object converted1 = convertToType(parsedInput[0], "Type1");
-        Object converted2 = convertToType(parsedInput[1], "Type2");
+      case 'python':
+        // Look for def function_name patterns
+        const pythonMatch = code.match(/def\s+(\w+)\s*\([^)]*\)/);
+        if (pythonMatch) {
+          analysis.functionName = pythonMatch[1];
+        }
+        break;
         
-        // Execute solution
-        Solution sol = new Solution();
-        Object result = sol.methodName(converted1, converted2);
+      case 'javascript':
+        // Look for function patterns (function name, const name =, etc.)
+        const jsMatch = code.match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=|\s*(\w+)\s*[:=]\s*(?:function|\([^)]*\)\s*=>))/);
+        if (jsMatch) {
+          analysis.functionName = jsMatch[1] || jsMatch[2] || jsMatch[3];
+        }
+        break;
         
-        // Serialize output
-        System.out.println(serializeOutput(result));
-    }}
-}}
+      case 'cpp':
+        // Look for return_type function_name patterns
+        const cppMatch = code.match(/(\w+(?:<[^>]+>)?(?:\s*\*)?)\s+(\w+)\s*\([^)]*\)/);
+        if (cppMatch && !['if', 'for', 'while', 'switch'].includes(cppMatch[2])) {
+          analysis.functionName = cppMatch[2];
+        }
+        break;
+    }
+  } catch (error) {
+    console.warn('Failed to analyze user code:', error);
+  }
+  
+  return analysis;
+}
 
-USER'S CODE (DO NOT MODIFY):
-{user_code}
+// Enhanced input parsing with better type inference
+function generateInputVariables(input: any[], language: string): string {
+  const variables: string[] = [];
+  
+  input.forEach((param, index) => {
+    const varName = getVariableName(index, param);
+    const varDeclaration = formatVariable(param, varName, language);
+    if (varDeclaration) {
+      variables.push(varDeclaration);
+    }
+  });
+  
+  return variables.join('\n');
+}
 
-Generate the wrapped executable code:
-`;
+function getVariableName(index: number, value: any): string {
+  // Common parameter name patterns based on type
+  if (Array.isArray(value)) {
+    if (value.length > 0 && Array.isArray(value[0])) {
+      return index === 0 ? 'matrix' : `matrix${index + 1}`;
+    }
+    return index === 0 ? 'nums' : `arr${index + 1}`;
+  }
+  if (typeof value === 'string') {
+    return index === 0 ? 's' : `str${index + 1}`;
+  }
+  if (typeof value === 'number') {
+    return index === 0 ? 'target' : `num${index + 1}`;
+  }
+  return `param${index + 1}`;
+}
+
+function formatVariable(value: any, name: string, language: string): string {
+  switch (language) {
+    case 'java':
+      return formatJavaVariable(value, name);
+    case 'python':
+      return `${name} = ${JSON.stringify(value)}`;
+    case 'javascript':
+      return `let ${name} = ${JSON.stringify(value)};`;
+    case 'cpp':
+      return formatCppVariable(value, name);
+    default:
+      return '';
+  }
+}
+
+function formatJavaVariable(value: any, name: string): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return `int[] ${name} = {};`;
+    }
+    
+    if (Array.isArray(value[0])) {
+      // 2D array
+      const formatted = value.map(row => `{${row.join(',')}}`).join(',');
+      return `int[][] ${name} = {${formatted}};`;
+    } else if (typeof value[0] === 'string') {
+      const formatted = value.map(s => `"${s}"`).join(',');
+      return `String[] ${name} = {${formatted}};`;
+    } else {
+      return `int[] ${name} = {${value.join(',')}};`;
+    }
+  } else if (typeof value === 'string') {
+    return `String ${name} = "${value}";`;
+  } else if (typeof value === 'boolean') {
+    return `boolean ${name} = ${value};`;
+  } else {
+    return `int ${name} = ${value};`;
+  }
+}
+
+function formatCppVariable(value: any, name: string): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return `vector<int> ${name} = {};`;
+    }
+    
+    if (Array.isArray(value[0])) {
+      const formatted = value.map(row => `{${row.join(',')}}`).join(',');
+      return `vector<vector<int>> ${name} = {${formatted}};`;
+    } else if (typeof value[0] === 'string') {
+      const formatted = value.map(s => `"${s}"`).join(',');
+      return `vector<string> ${name} = {${formatted}};`;
+    } else {
+      return `vector<int> ${name} = {${value.join(',')}};`;
+    }
+  } else if (typeof value === 'string') {
+    return `string ${name} = "${value}";`;
+  } else if (typeof value === 'boolean') {
+    return `bool ${name} = ${value ? 'true' : 'false'};`;
+  } else {
+    return `int ${name} = ${value};`;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { code, language: providedLanguage, input, expectedOutput } = await req.json();
-    console.log(input,expectedOutput)
+    
+    console.log("🚀 Enhanced AI Execute:", {
+      language: providedLanguage,
+      codeLength: code?.length || 0,
+      inputCount: Array.isArray(input) ? input.length : 0,
+      expectedOutput: JSON.stringify(expectedOutput)
+    });
 
-    // Input validation
+    // Enhanced validation
     if (!code?.trim()) {
       return NextResponse.json({
         actualOutput: "",
@@ -93,16 +321,16 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (typeof input === "undefined") {
+    if (!Array.isArray(input)) {
       return NextResponse.json({
         actualOutput: "",
         passed: false,
-        error: "No test input provided",
-        explanation: "Test input is required to execute the code",
+        error: "Invalid input format",
+        explanation: "Input must be an array of function parameters",
       });
     }
 
-    const language = providedLanguage?.toLowerCase() || detectLanguage(code);
+    const language = providedLanguage?.toLowerCase() || "java";
     const languageId = LANGUAGE_MAP[language];
     
     if (!languageId) {
@@ -114,182 +342,163 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Generate executable code using AI
-    const prompt = AI_PROMPT_TEMPLATE
-      .replace(/{language}/g, language)
-      .replace(/{user_code}/g, code)
+    const promptTemplate = ENHANCED_PROMPTS[language as keyof typeof ENHANCED_PROMPTS];
+    if (!promptTemplate) {
+      return NextResponse.json({
+        actualOutput: "",
+        passed: false,
+        error: `No template for language: ${language}`,
+        explanation: `Language ${language} not supported`,
+      });
+    }
+
+    // Analyze user code for better context
+    const codeAnalysis = analyzeUserCode(code, language);
+    console.log("🔍 Code analysis:", codeAnalysis);
+
+    // Enhanced prompt with better context
+    const prompt = promptTemplate
       .replace(/{input}/g, JSON.stringify(input))
-      .replace(/{expectedOutput}/g, JSON.stringify(expectedOutput));
+      .replace(/{expectedOutput}/g, JSON.stringify(expectedOutput))
+      .replace(/{userCode}/g, code);
+
+    console.log("🤖 Generating enhanced wrapper...");
 
     const aiResult = await generateText({
       model: gemini("gemini-1.5-flash"),
       prompt,
-      maxTokens: 4000,
-      temperature: 0,
+      maxTokens: 3000, // Increased for more complex scenarios
+      temperature: 0, // Keep deterministic
     });
 
     let executableCode = aiResult.text.trim();
     
-    // Extract from markdown code blocks if present
-    const codeBlockPattern = new RegExp(`\\\`\\\`\\\`(?:${language})?\\s*([\\s\\S]+?)\\\`\\\`\\\``);
-    const match = executableCode.match(codeBlockPattern);
-    if (match && match[1]) {
-      executableCode = match[1].trim();
+    // Enhanced code cleaning
+    const codeBlockMatch = executableCode.match(/```(?:\w+)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      executableCode = codeBlockMatch[1].trim();
     }
 
-    // Execute the wrapped code
+    // Remove any AI commentary that might have slipped through
+    const codeLines = executableCode.split('\n');
+    const cleanLines = codeLines.filter(line => {
+      const trimmed = line.trim();
+      return !trimmed.startsWith('//') || 
+             !trimmed.includes('This') || 
+             !trimmed.includes('AI') ||
+             !trimmed.includes('generated');
+    });
+    executableCode = cleanLines.join('\n');
+
+    console.log("📝 Generated code preview:", executableCode);
+
+    // Execute with Judge0
     const executionResult = await executeCode({
       code: executableCode,
       language: language.toLowerCase(),
-      input: JSON.stringify(input),
+      input: "",
     });
 
-    // Process results
+    console.log("📊 Judge0 result:", {
+      stdout: executionResult.stdout?.substring(0, 200),
+      stderr: executionResult.stderr?.substring(0, 200),
+      compile_output: executionResult.compile_output?.substring(0, 200),
+      status: executionResult.status?.description
+    });
+
     let actualOutput = "";
     let executionError: string | null = null;
     let passed = false;
 
+    // Enhanced error handling
     if (executionResult.compile_output?.trim()) {
-      executionError = cleanErrorMessage(executionResult.compile_output);
+      executionError = executionResult.compile_output.trim();
       actualOutput = "Compilation failed";
     } else if (executionResult.stderr?.trim()) {
-      executionError = cleanErrorMessage(executionResult.stderr);
+      executionError = executionResult.stderr.trim();
       actualOutput = "Runtime error";
     } else if (executionResult.stdout?.trim()) {
       actualOutput = executionResult.stdout.trim();
-      passed = enhancedOutputComparison(actualOutput, expectedOutput);
+      passed = compareOutputs(actualOutput, expectedOutput);
     } else {
-      actualOutput = "No output produced";
-      executionError = "Program executed but produced no output";
+      actualOutput = "No output";
+      executionError = "No output produced";
     }
 
     return NextResponse.json({
       actualOutput,
       passed,
       error: executionError,
-      explanation: generateEnhancedExplanation(
-        passed,
-        actualOutput,
-        expectedOutput,
-        executionError
-      ),
+      explanation: passed 
+        ? "✅ Test passed!" 
+        : `❌ Expected: ${JSON.stringify(expectedOutput)}, Got: ${actualOutput}`,
       executionDetails: {
         time: executionResult.time || 0,
         memory: executionResult.memory || 0,
         language: language,
         status: executionResult.status?.description || "Unknown",
+        codeAnalysis,
       },
     });
 
   } catch (error: any) {
+    console.error("💥 Enhanced execution error:", error);
     return NextResponse.json({
       actualOutput: "",
       passed: false,
       error: `System error: ${error.message}`,
-      explanation: "An unexpected error occurred during code execution. Please try again.",
+      explanation: "An unexpected error occurred during code execution.",
     });
   }
 }
 
-function detectLanguage(code: string): string {
-  if (code.includes("#include") && code.includes("printf")) return "c";
-  if (code.includes("#include") || code.includes("using namespace")) return "cpp";
-  if (code.includes("public class") || code.includes("import java")) return "java";
-  if (code.includes("def ") && !code.includes("import java")) return "python";
-  if (code.includes("function") || code.includes("console.log")) return "javascript";
-  return "java";
-}
+// Enhanced output comparison with better type handling
+function compareOutputs(actual: string, expected: any): boolean {
+  try {
+    const actualStr = actual.trim();
+    const expectedStr = String(expected ?? "").trim();
 
-function cleanErrorMessage(error: string): string {
-  return error
-    .replace(/\/tmp\/[^\s]*\.(java|cpp|py|js|c):/g, "Line ")
-    .replace(/^\s*at\s+.*$/gm, "")
-    .replace(/^\s*\.\.\.\s*\d+\s*more\s*$/gm, "")
-    .replace(/\n+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .substring(0, 500);
-}
+    // Direct string match (most common case)
+    if (actualStr === expectedStr) return true;
 
-function enhancedOutputComparison(actual: string, expected: any): boolean {
-  const actualStr = actual.trim();
-  const expectedStr = String(expected ?? "").trim();
+    // Handle array outputs with different formatting
+    if (actualStr.includes("[") && (expectedStr.includes("[") || Array.isArray(expected))) {
+      const normalizeArray = (str: string) => 
+        str.replace(/\s+/g, "")
+           .replace(/\[/g, "[")
+           .replace(/\]/g, "]")
+           .toLowerCase();
+      
+      const normalizedActual = normalizeArray(actualStr);
+      const normalizedExpected = normalizeArray(
+        Array.isArray(expected) ? JSON.stringify(expected) : expectedStr
+      );
+      
+      if (normalizedActual === normalizedExpected) return true;
+    }
 
-  // Direct exact match
-  if (actualStr === expectedStr) return true;
-
-  // Null/empty handling
-  const nullValues = ['null', '', 'None', 'nil', 'undefined'];
-  const actualIsNull = nullValues.includes(actualStr.toLowerCase()) || expected === null;
-  const expectedIsNull = nullValues.includes(expectedStr.toLowerCase()) || expected === null;
-  if (actualIsNull && expectedIsNull) return true;
-
-  // Array/list comparison
-  if (actualStr.includes("[") || expectedStr.includes("[")) {
-    const normalizeArray = (str: string) => {
-      return str
-        .replace(/\s+/g, "")
-        .replace(/'/g, '"')
-        .replace(/True/g, 'true')
-        .replace(/False/g, 'false')
-        .replace(/None/g, 'null')
-        .toLowerCase();
-    };
-
-    const normalizedActual = normalizeArray(actualStr);
-    const normalizedExpected = normalizeArray(expectedStr);
-    
-    if (normalizedActual === normalizedExpected) return true;
-
-    try {
-      const actualJson = JSON.parse(normalizedActual);
-      const expectedJson = JSON.parse(normalizedExpected);
-      return JSON.stringify(actualJson) === JSON.stringify(expectedJson);
-    } catch {}
-  }
-
-  // Numeric comparison
-  if (!actualStr.includes("[") && !expectedStr.includes("[")) {
+    // Enhanced numeric comparison with tolerance
     const actualNum = parseFloat(actualStr);
     const expectedNum = parseFloat(expectedStr);
-    
     if (!isNaN(actualNum) && !isNaN(expectedNum)) {
-      const tolerance = Math.max(1e-9, Math.abs(expectedNum) * 1e-9);
-      return Math.abs(actualNum - expectedNum) <= tolerance;
+      return Math.abs(actualNum - expectedNum) < 1e-9;
     }
-  }
 
-  // Boolean comparison
-  const boolMap: Record<string, boolean> = {
-    'true': true, 'false': false, '1': true, '0': false,
-    'yes': true, 'no': false, 'True': true, 'False': false
-  };
-
-  if (actualStr in boolMap && expectedStr in boolMap) {
-    return boolMap[actualStr] === boolMap[expectedStr];
-  }
-
-  // Case-insensitive comparison
-  return actualStr.toLowerCase() === expectedStr.toLowerCase();
-}
-
-function generateEnhancedExplanation(
-  passed: boolean,
-  actualOutput: string,
-  expectedOutput: any,
-  error: string | null
-): string {
-  if (passed) return "✅ Test passed! Your code produced the correct output.";
-  
-  if (error) {
-    if (error.toLowerCase().includes("compilation")) {
-      return `❌ Compilation Error: ${error}`;
+    // Boolean comparison with string variants
+    const boolMap: Record<string, boolean> = { 
+      'true': true, 'false': false, '1': true, '0': false 
+    };
+    if (actualStr.toLowerCase() in boolMap && 
+        (expectedStr.toLowerCase() in boolMap || typeof expected === 'boolean')) {
+      return boolMap[actualStr.toLowerCase()] === 
+             (typeof expected === 'boolean' ? expected : boolMap[expectedStr.toLowerCase()]);
     }
-    if (error.toLowerCase().includes("runtime")) {
-      return `❌ Runtime Error: ${error}`;
-    }
-    return `❌ Execution Error: ${error}`;
-  }
 
-  return `❌ Wrong Answer:\nExpected: ${String(expectedOutput).substring(0, 200)}\nGot: ${actualOutput.substring(0, 200)}`;
+    // Case-insensitive string comparison
+    return actualStr.toLowerCase() === expectedStr.toLowerCase();
+    
+  } catch (error) {
+    console.warn('Output comparison error:', error);
+    return false;
+  }
 }

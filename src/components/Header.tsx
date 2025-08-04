@@ -1,80 +1,71 @@
 "use client";
-import { Moon, Sun, Code2, Settings } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Code2, Target, Loader2 } from "lucide-react";
+import SettingsDialog from "./SettingsDialog";
+import { useState } from "react";
 import { Button } from "./ui/button";
-import { useEditorStore } from "@/store/editorStore";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel
-} from "./ui/dropdown-menu";
-
+import { useRouter } from "next/navigation";
 const Header = () => {
-  const { theme, setTheme } = useTheme();
-  const { fontSize, setFontSize } = useEditorStore();
+  const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  const fontSizes = [12, 14, 16, 18, 20, 22, 24];
+  const handleNavigateToPractice = async () => {
+    setIsNavigating(true);
+
+    // Simulate loading time for better UX
+    setTimeout(() => {
+      router.push('/practice');
+    }, 2500);
+  };
 
   return (
-    <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
+    <>
+      <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative z-50">
+        <div className="flex items-center justify-between px-6 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Code2 className="w-6 h-6 text-primary" />
+              <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                SparkCode
+              </h1>
+            </div>
+            <div className="hidden sm:block text-xs text-muted-foreground bg-muted px-2 py-1 rounded border">
+              AI-Powered Coding Platform
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
-            <Code2 className="w-6 h-6 text-primary" />
-            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-              SparkEditor
-            </h1>
-          </div>
-          <div className="hidden sm:block text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-            Pro Code Editor
+            {/* Enhanced Practice Mode Button */}
+            <Button
+              onClick={handleNavigateToPractice}
+              disabled={isNavigating}
+              className={`
+                relative overflow-hidden font-medium shadow-sm hover:shadow-md 
+                transition-all duration-200 disabled:opacity-75
+                ${isNavigating ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'hover:scale-105'}
+              `}
+              size="sm"
+            >
+              {isNavigating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Loading...
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-pulse" />
+                </>
+              ) : (
+                <>
+                  <Target className="w-4 h-4 mr-2" />
+                  Practice Mode
+                </>
+              )}
+            </Button>
+
+            {/* Settings Dialog */}
+            <SettingsDialog />
           </div>
         </div>
+      </header>
 
-        <div className="flex items-center gap-2">
-          {/* Font Size Settings */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Settings</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>Font Size</DropdownMenuLabel>
-              {fontSizes.map((size) => (
-                <DropdownMenuItem
-                  key={size}
-                  onClick={() => setFontSize(size)}
-                  className={fontSize === size ? "bg-accent" : ""}
-                >
-                  {size}px {fontSize === size && "✓"}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Theme Toggle */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="gap-2"
-          >
-            {theme === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-            <span className="hidden sm:inline">
-              {theme === "dark" ? "Light" : "Dark"}
-            </span>
-          </Button>
-        </div>
-      </div>
-    </header>
+    </>
   );
 };
 

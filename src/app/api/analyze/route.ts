@@ -20,12 +20,20 @@ Brief explanation of what this code does and the problem it solves.
 - **Time:** O(?) - Why?
 - **Space:** O(?) - Why?
 
+## 🎯 **Problem & Solution**
+- **Pattern:** [Two Pointers/Sliding Window/DFS/DP/etc.]
+- **Problem:** Brief explanation of what this code does
+
+
 ## 🏆 **Quality Score: [X/10]**
 ### ✅ **Strengths** (2-3 points max)
 - Key good practices identified
 
 ### ⚠️ **Issues** (2-3 points max)
+- Edge cases: Empty input, single element, duplicates, etc.
+- Boundary conditions: Integer overflow, negative numbers
 - Critical problems or improvements needed
+
 
 ## 🚀 **Best Optimization**
 \`\`\`{language}
@@ -43,6 +51,7 @@ One crucial takeaway that makes this code/pattern click.
 
 ---
 Keep it concise, actionable, and focused on the most important insights.
+
 `;
 
 export async function POST(req: NextRequest) {

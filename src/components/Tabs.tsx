@@ -79,7 +79,7 @@ export default function Tabs() {
             <ContextMenu key={tab.id}>
               <ContextMenuTrigger>
                 <div
-                  className={`relative flex items-center group px-4 min-w-[120px] max-w-[200px] h-12 
+                  className={`relative flex items-center group px-4 min-w-[120px] max-w-[200px] h-8
                     transition-colors cursor-pointer border-r border-border
                     ${activeTabId === tab.id
                       ? "bg-background text-primary font-semibold"
@@ -87,7 +87,7 @@ export default function Tabs() {
                     }`}
                   onClick={() => setActiveTabId(tab.id)}
                 >
-                  <span className="overflow-hidden text-ellipsis whitespace-nowrap flex-1">
+                  <span className="overflow-hidden text-sm text-ellipsis whitespace-nowrap flex-1">
                     {tab.name}
                   </span>
                   <span className="ml-2 text-xs opacity-60 capitalize">
@@ -134,7 +134,7 @@ export default function Tabs() {
           ))}
 
           <button
-            className="ml-2 px-3 flex items-center justify-center h-12 bg-background hover:bg-accent"
+            className="ml-2 px-3 flex items-center justify-center h-8 bg-background hover:bg-accent"
             onClick={() => setShowNewDialog(true)}
           >
             <Plus size={18} />

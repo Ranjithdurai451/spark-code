@@ -20,15 +20,15 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  if (isMobile) {
-    return <MobileNotSupported />;
-  }
+  // if (isMobile) {
+  //   return <MobileNotSupported />;
+  // }
 
   return (
     <div className="flex flex-col h-screen bg-muted/20">
       <Header />
-      <div className="flex-1 p-4 gap-4 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal" className="h-full gap-4">
+      <div className="flex-1 p-2 gap-2 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="h-full gap-2">
           <ResizablePanel defaultSize={60} minSize={40}>
             <div className="h-full bg-background rounded-xl border shadow-sm overflow-hidden">
               <CodeEditor />
