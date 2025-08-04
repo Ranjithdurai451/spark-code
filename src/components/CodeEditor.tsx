@@ -4,6 +4,7 @@ import { useEditorStore } from "../store/editorStore";
 import Tabs from "./Tabs";
 import { useTheme } from "next-themes";
 import { useRef, useEffect } from "react";
+// @ts-expect-error: monaco-vim has no type declarations
 import { initVimMode, VimMode } from "monaco-vim";
 
 export default function CodeEditor() {
