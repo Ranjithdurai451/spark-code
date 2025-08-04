@@ -1,13 +1,29 @@
+// components/CodeEditor.tsx - Keep your existing component as-is, but rename it
 "use client";
 import MonacoEditor from "@monaco-editor/react";
 import { useEditorStore } from "../store/editorStore";
 import Tabs from "./Tabs";
 import { useTheme } from "next-themes";
 import { useRef, useEffect } from "react";
-// @ts-expect-error: monaco-vim has no type declarations
-import { initVimMode, VimMode } from "monaco-vim";
 
-export default function CodeEditor() {
+// Dynamic import for monaco-vim to avoid SSR issues
+let initVimMode: any = null;
+let VimMode: any = null;
+
+const loadVimMode = async () => {
+  if (typeof window !== "undefined" && (!initVimMode || !VimMode)) {
+    try {
+      // @ts-ignore: No types for monaco-vim
+      const vimModule = await import("monaco-vim");
+      initVimMode = vimModule.initVimMode;
+      VimMode = vimModule.VimMode;
+    } catch (error) {
+      console.error("Failed to load monaco-vim:", error);
+    }
+  }
+};
+
+export default function CodeEditorComponent() {
   const { theme } = useTheme();
   const {
     tabs,
@@ -24,6 +40,13 @@ export default function CodeEditor() {
   const vimModeRef = useRef<any>(null);
   const statusBarRef = useRef<HTMLDivElement>(null);
 
+  // Load vim mode dynamically
+  useEffect(() => {
+    if (isVimModeEnabled) {
+      loadVimMode();
+    }
+  }, [isVimModeEnabled]);
+
   // Handle Vim mode changes
   useEffect(() => {
     if (!editorRef.current || !statusBarRef.current) return;
@@ -35,16 +58,18 @@ export default function CodeEditor() {
       statusBarRef.current.innerHTML = "";
     }
 
-    // Enable mode if toggled on (but only if not already initialized)
-    if (isVimModeEnabled && !vimModeRef.current) {
+    // Enable mode if toggled on
+    if (isVimModeEnabled && !vimModeRef.current && initVimMode) {
       vimModeRef.current = initVimMode(editorRef.current, statusBarRef.current);
+
       setTimeout(() => {
-        VimMode.Vim.map('jj', '<Esc>', 'insert');
-        VimMode.Vim.map('jk', '<Esc>', 'insert');
+        if (VimMode?.Vim?.map) {
+          VimMode.Vim.map('jj', '<Esc>', 'insert');
+          VimMode.Vim.map('jk', '<Esc>', 'insert');
+        }
       }, 100);
     }
-  }, [isVimModeEnabled]);
-
+  }, [isVimModeEnabled, initVimMode]);
 
   // Handle relative line numbers
   useEffect(() => {
@@ -120,20 +145,24 @@ export default function CodeEditor() {
             fontLigatures: true,
             bracketPairColorization: { enabled: true }
           }}
-          onMount={(editor) => {
+          onMount={async (editor) => {
             editorRef.current = editor;
 
-            // Re-init Vim mode if it's enabled
+            // Load and init Vim mode if enabled
             if (isVimModeEnabled && statusBarRef.current) {
-              vimModeRef.current = initVimMode(editor, statusBarRef.current);
+              await loadVimMode();
+              if (initVimMode) {
+                vimModeRef.current = initVimMode(editor, statusBarRef.current);
 
-              setTimeout(() => {
-                VimMode.Vim.map('jj', '<Esc>', 'insert');
-                VimMode.Vim.map('jk', '<Esc>', 'insert');
-              }, 100);
+                setTimeout(() => {
+                  if (VimMode?.Vim?.map) {
+                    VimMode.Vim.map('jj', '<Esc>', 'insert');
+                    VimMode.Vim.map('jk', '<Esc>', 'insert');
+                  }
+                }, 100);
+              }
             }
           }}
-
           onChange={(value) => {
             updateTab(activeTab.id, { code: value ?? "" });
           }}

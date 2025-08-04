@@ -521,4 +521,4 @@ function detectLanguageFromCode(code: string): string {
     errors.push("Failed to parse AI response");
     return { testCases: null, errors };
   }
-}
+} 

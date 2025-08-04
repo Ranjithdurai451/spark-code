@@ -37,8 +37,16 @@ export function PracticeInterface() {
 
     const handleLanguageChange = (language: string) => {
         setSelectedLanguage(language);
-        if (currentProblem?.functionSignature?.[language]) {
-            setCode(currentProblem.functionSignature[language]);
+        if (
+            currentProblem &&
+            typeof currentProblem === "object" &&
+            currentProblem !== null &&
+            "functionSignature" in currentProblem &&
+            typeof (currentProblem as any).functionSignature === "object" &&
+            (currentProblem as any).functionSignature !== null &&
+            (currentProblem as any).functionSignature[language]
+        ) {
+            setCode((currentProblem as any).functionSignature[language]);
         }
         setTestResults([]);
     };
@@ -128,7 +136,7 @@ export function PracticeInterface() {
                     {/* Left Panel - Question Generator */}
                     <ResizablePanel defaultSize={50} minSize={25} maxSize={75}>
                         <QuestionGenerator
-                            onProblemSelect={setCurrentProblem}
+                            onProblemSelect={(problem) => { if (problem) setCurrentProblem(problem) }}
                             currentProblem={currentProblem}
                         />
                     </ResizablePanel>
