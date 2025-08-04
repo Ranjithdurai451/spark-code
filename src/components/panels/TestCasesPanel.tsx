@@ -434,7 +434,7 @@ export function TestCasesPanel({
                             <AlertCircle className="h-4 w-4 text-destructive" />
                             <AlertDescription className="text-destructive">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-xs">{error.message.message}</span>
+                                    <span className="text-xs">{error.message}</span>
                                     <Button onClick={onReload} variant="outline" size="sm" className="h-6 text-xs">
                                         <RotateCcw className="w-3 h-3 mr-1" />
                                         Retry
