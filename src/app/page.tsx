@@ -23,7 +23,7 @@ export default function Home() {
           <ResizablePanelGroup direction="horizontal" className="h-full gap-2">
             <ResizablePanel defaultSize={60} minSize={40}>
               <div className="h-full bg-background rounded-xl border shadow-sm overflow-hidden">
-                {/* <CodeEditor /> */}
+                <CodeEditor />
               </div>
             </ResizablePanel>
             <ResizableHandle
