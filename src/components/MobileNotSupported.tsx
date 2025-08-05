@@ -20,8 +20,8 @@ export default function MobileNotSupported() {
                     </div>
                     <CardTitle className="text-2xl font-bold">Desktop Required</CardTitle>
                     <CardDescription className="text-base">
-                        SparkCode is optimized for desktop development experience.
-                        Please access this application on a larger screen (1024px+) for the best coding experience.
+                        SparkEditor is optimized for desktop development experience.
+                        Please access this application on a larger screen for the best coding experience.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -29,23 +29,11 @@ export default function MobileNotSupported() {
                         <Smartphone className="w-4 h-4" />
                         <span>Mobile view not supported</span>
                     </div>
-
-                    {/* Helpful suggestions */}
-                    <div className="text-sm text-muted-foreground space-y-2">
-                        <p>Try:</p>
-                        <ul className="text-left space-y-1">
-                            <li>• Using a desktop or laptop</li>
-                            <li>• Rotating your tablet to landscape</li>
-                            <li>• Using a larger tablet (12" or more)</li>
-                        </ul>
-                    </div>
-
                     <Button
-                        onClick={handleRefresh}
+                        onClick={() => window.location.reload()}
                         variant="outline"
                         className="w-full"
                     >
-                        <RotateCcw className="w-4 h-4 mr-2" />
                         Refresh Page
                     </Button>
                 </CardContent>
@@ -53,3 +41,5 @@ export default function MobileNotSupported() {
         </div>
     );
 }
+
+
