@@ -66,8 +66,6 @@ export async function POST(req: NextRequest) {
     const result = await generateText({
       model: gemini("gemini-2.0-flash-exp"),
       prompt,
-      maxTokens: 3000,
-      temperature: 0.1,
     });
 
     // Enhanced JSON extraction

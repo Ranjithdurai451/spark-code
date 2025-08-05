@@ -214,7 +214,7 @@ export default function SidePanel() {
                             </div> */}
 
                             {/* Compact Keyboard Shortcuts */}
-                            {/* <Card className="bg-muted/20 border border-dashed">
+                            {/* <Card className="bg-muted/20 border border-dashed py-2">
                                 <CardContent className="p-3">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Command className="w-4 h-4 text-primary" />

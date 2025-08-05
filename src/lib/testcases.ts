@@ -27,7 +27,6 @@ export async function generateTestCases({ code, language }: { code: string, lang
   const response = await generateText({
     model: gemini("gemini-2.0-flash"),
     prompt,
-    maxTokens: 1024,
   });
   return { testcases: response.text };
 }

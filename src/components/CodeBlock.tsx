@@ -66,7 +66,7 @@ export const Codeblock = memo(
 
         return !inline && (match || isMultiLine) ? (
             <div className="relative mt-1 mb-1 flex flex-col overflow-hidden rounded-lg border border-border">
-                <div className="flex items-center gap-2 rounded-t-md border-border border-b bg-muted px-2 py-1">
+                <div className="flex items-center gap-2 rounded-t-md border-border border-b bg-muted px-2 py-1 shrink-0">
                     <span className="pl-2 font-mono text-muted-foreground text-xs">
                         {language}
                     </span>
@@ -148,19 +148,39 @@ export const Codeblock = memo(
                     )}
                 </div>
 
-                <div className="relative">
+                <div className="relative min-h-0 flex-1">
                     <div
-                        dangerouslySetInnerHTML={{ __html: highlightedCode }}
-                        className="shiki-container pl-2 font-mono"
-                    />
+                        className={cn(
+                            "overflow-auto max-w-full",
+                            // When wrapped, allow normal flow
+                            wrapped ? "overflow-x-hidden" : "overflow-x-auto",
+                            // Ensure proper scrollbar styling
+                            "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border hover:scrollbar-thumb-border/80"
+                        )}
+                        style={{
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: 'rgb(156 163 175) transparent'
+                        }}
+                    >
+                        <div
+                            dangerouslySetInnerHTML={{ __html: highlightedCode }}
+                            className={cn(
+                                "shiki-container pl-2 font-mono",
+                                // Ensure code doesn't wrap when unwrapped
+                                !wrapped && "whitespace-nowrap",
+                                // Ensure proper width handling
+                                wrapped ? "max-w-full" : "min-w-max"
+                            )}
+                        />
+                    </div>
 
                     {!expanded && lineNumber > 17 && (
-                        <div className="absolute right-0 bottom-0 left-0 flex h-12 justify-center rounded-b-md bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent">
+                        <div className="absolute right-0 bottom-0 left-0 flex h-12 justify-center rounded-b-md bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent pointer-events-none">
                             <Button
                                 variant="default"
                                 size="sm"
                                 onClick={() => setExpanded(true)}
-                                className="h-[1.5rem] gap-1.5 rounded-md shadow-lg"
+                                className="h-[1.5rem] gap-1.5 rounded-md shadow-lg pointer-events-auto"
                             >
                                 {lineNumber - 17} more lines
                                 <ChevronDown className="!size-4" />

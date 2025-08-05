@@ -367,8 +367,6 @@ export async function POST(req: NextRequest) {
     const aiResult = await generateText({
       model: gemini("gemini-1.5-flash"),
       prompt,
-      maxTokens: 3000, // Increased for more complex scenarios
-      temperature: 0, // Keep deterministic
     });
 
     let executableCode = aiResult.text.trim();

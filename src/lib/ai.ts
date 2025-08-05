@@ -101,8 +101,6 @@ export async function analyzeCodeStream({ code, language }: { code: string; lang
     const result = await streamText({
       model: gemini("gemini-2.0-flash-exp"),
       prompt,
-      maxTokens: 4096,
-      temperature: 0.7,
     });
 
     return result.toTextStreamResponse();

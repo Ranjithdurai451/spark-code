@@ -1,6 +1,6 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { Brain, RotateCcw, AlertCircle, Maximize2, Copy, CheckCheck, Loader2 } from "lucide-react";
+import { Brain, RotateCcw, AlertCircle, Maximize2, Copy, CheckCheck, Loader2, ChevronDown } from "lucide-react";
 import { MemoizedMarkdown } from "@/components/MemoizedMarkdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -25,71 +25,61 @@ export function AnalysisPanel({
 }: AnalysisPanelProps) {
     const [showMaximizedView, setShowMaximizedView] = useState(false);
     const [copied, setCopied] = useState(false);
-    const contentRef = useRef<HTMLDivElement>(null);
+    const [showScrollButton, setShowScrollButton] = useState(false);
+    const [isNearBottom, setIsNearBottom] = useState(true);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
 
-    // Track user scrolling to prevent auto-scroll interference
-    const isUserScrollingRef = useRef(false);
-    const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const lastContentLengthRef = useRef(0);
+    // Check if user is near bottom of scroll area
+    const checkScrollPosition = useCallback(() => {
+        if (!scrollViewportRef.current) return;
 
-    // Handle user scroll detection
-    const handleScroll = useCallback(() => {
-        isUserScrollingRef.current = true;
+        const { scrollTop, scrollHeight, clientHeight } = scrollViewportRef.current;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        const threshold = 150; // Show button when more than 150px from bottom
 
-        // Clear existing timeout
-        if (scrollTimeoutRef.current) {
-            clearTimeout(scrollTimeoutRef.current);
-        }
+        const nearBottom = distanceFromBottom <= threshold;
+        setIsNearBottom(nearBottom);
 
-        // Reset user scrolling flag after 1.5 seconds of no scrolling
-        scrollTimeoutRef.current = setTimeout(() => {
-            isUserScrollingRef.current = false;
-        }, 1500);
-    }, []);
-
-    // Auto-scroll during streaming (only if user isn't manually scrolling)
-    useEffect(() => {
-        if (isAnalyzing && latestAnalysis?.content) {
-            const currentContentLength = latestAnalysis.content.length;
-
-            // Only auto-scroll if:
-            // 1. User is not manually scrolling
-            // 2. Content has actually grown (new content added)
-            // 3. We're still analyzing (streaming)
-            if (!isUserScrollingRef.current &&
-                currentContentLength > lastContentLengthRef.current) {
-
-                requestAnimationFrame(() => {
-                    if (scrollViewportRef.current) {
-                        scrollViewportRef.current.scrollTo({
-                            top: scrollViewportRef.current.scrollHeight,
-                            behavior: 'smooth'
-                        });
-                    }
-                });
-            }
-
-            lastContentLengthRef.current = currentContentLength;
-        }
+        // Show scroll button when:
+        // 1. Not near bottom
+        // 2. There's scrollable content
+        // 3. We have analysis content to scroll through
+        setShowScrollButton(
+            !nearBottom &&
+            scrollHeight > clientHeight &&
+            (latestAnalysis?.content || isAnalyzing)
+        );
     }, [latestAnalysis?.content, isAnalyzing]);
 
-    // Reset scroll tracking when analysis starts
-    useEffect(() => {
-        if (isAnalyzing) {
-            isUserScrollingRef.current = false;
-            lastContentLengthRef.current = 0;
-        }
-    }, [isAnalyzing]);
+    // Handle scroll events with throttling for performance
+    const handleScroll = useCallback(() => {
+        checkScrollPosition();
+    }, [checkScrollPosition]);
 
-    // Cleanup timeout on unmount
-    useEffect(() => {
-        return () => {
-            if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current);
-            }
-        };
+    // Smooth scroll to bottom function
+    const scrollToBottom = useCallback(() => {
+        if (!scrollViewportRef.current) return;
+
+        scrollViewportRef.current.scrollTo({
+            top: scrollViewportRef.current.scrollHeight,
+            behavior: 'smooth'
+        });
     }, []);
+
+    // Check scroll position when content changes
+    useEffect(() => {
+        if (latestAnalysis?.content) {
+            // Small delay to ensure DOM is updated
+            setTimeout(() => {
+                checkScrollPosition();
+            }, 50);
+        }
+    }, [latestAnalysis?.content, checkScrollPosition]);
+
+    // Initial scroll position check
+    useEffect(() => {
+        checkScrollPosition();
+    }, [checkScrollPosition]);
 
     const handleCopyAnalysis = async () => {
         if (latestAnalysis?.content) {
@@ -104,7 +94,7 @@ export function AnalysisPanel({
     };
 
     return (
-        <div className="h-full flex flex-col min-w-0">
+        <div className="h-full flex flex-col min-w-0 relative">
             <div className="flex-1 overflow-hidden">
                 <div
                     ref={scrollViewportRef}
@@ -112,9 +102,9 @@ export function AnalysisPanel({
                     style={{
                         scrollbarWidth: 'thin',
                         scrollbarColor: 'rgb(156 163 175) transparent',
-                        scrollBehavior: 'smooth' // Smooth scrolling for better UX
+                        scrollBehavior: 'smooth'
                     }}
-                    onScroll={handleScroll} // Track user scrolling
+                    onScroll={handleScroll}
                 >
                     <div className="p-3 min-h-full max-w-full">
                         {error ? (
@@ -172,10 +162,7 @@ export function AnalysisPanel({
 
                                 {/* Analysis content with proper spacing */}
                                 <div className="bg-muted/20 rounded-lg p-3 overflow-hidden max-w-full">
-                                    <div
-                                        ref={contentRef}
-                                        className="max-w-full overflow-hidden break-words"
-                                    >
+                                    <div className="max-w-full overflow-hidden break-words">
                                         <MemoizedMarkdown
                                             content={latestAnalysis.content || ''}
                                             id={`analysis-${latestAnalysis.id || Date.now()}`}
@@ -192,7 +179,6 @@ export function AnalysisPanel({
                                                 <span className="text-xs">Analyzing...</span>
                                             </div>
                                         )}
-
                                     </div>
                                 </div>
                             </div>
@@ -215,7 +201,6 @@ export function AnalysisPanel({
                         )}
 
                         {/* Compact streaming status */}
-
                         {isAnalyzing && !latestAnalysis && (
                             <Card className="text-center">
                                 <CardContent className="p-6">
@@ -232,6 +217,23 @@ export function AnalysisPanel({
                     </div>
                 </div>
             </div>
+
+            {/* Scroll to Bottom Button - t3.chat style */}
+            {showScrollButton && (
+                <div className="absolute inset-x-0 bottom-4 flex justify-center z-20">
+                    <Button
+                        onClick={scrollToBottom}
+                        size="icon"
+                        variant="ghost"
+                        className="h-9 w-9 rounded-full bg-background/80 shadow border border-border flex items-center justify-center p-0 hover:bg-background/60 transition-all"
+                        aria-label="Scroll to bottom"
+                    >
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="mx-auto" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                    </Button>
+                </div>
+            )}
 
             {/* Maximized View Dialog */}
             <Dialog open={showMaximizedView} onOpenChange={setShowMaximizedView}>
