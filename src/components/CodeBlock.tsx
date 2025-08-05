@@ -34,15 +34,20 @@ export const Codeblock = memo(
         const match = /language-(\w+)/.exec(className || "");
         const language = match ? match[1] : "plaintext";
 
-        const [isMultiLine, lineNumber] = useMemo(() => {
-            const lines =
-                [...(Array.isArray(children) ? children : [children])]
-                    .filter((x: any) => typeof x === "string")
-                    .join("")
-                    .match(/\n/g)?.length ?? 0;
-            return [lines > 1, lines];
-        }, [children]);
+        // Calculate total lines and visible lines
+        const [totalLines, visibleLines] = useMemo(() => {
+            const codeText = [...(Array.isArray(children) ? children : [children])]
+                .filter((x: any) => typeof x === "string")
+                .join("");
 
+            const lines = codeText.split('\n');
+            const total = lines.length;
+            const visible = defaultProps?.expand ? total : Math.min(total, 17);
+
+            return [total, visible];
+        }, [children, defaultProps?.expand]);
+
+        const isMultiLine = totalLines > 1;
         const [didRecentlyCopied, setDidRecentlyCopied] = useState(false);
         const [expanded, setExpanded] = useState(defaultProps?.expand ?? false);
         const [wrapped, setWrapped] = useState(defaultProps?.wrap ?? false);
@@ -70,14 +75,14 @@ export const Codeblock = memo(
                     <span className="pl-2 font-mono text-muted-foreground text-xs">
                         {language}
                     </span>
-                    {lineNumber >= 16 && (
+                    {totalLines >= 16 && (
                         <span className="pt-0.5 pl-2 font-mono text-muted-foreground/50 text-xs">
-                            {lineNumber + 1} lines
+                            {totalLines} lines
                         </span>
                     )}
                     <div className="flex-grow" />
 
-                    {lineNumber >= 16 && !disable?.expand && (
+                    {totalLines >= 16 && !disable?.expand && (
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
@@ -152,9 +157,7 @@ export const Codeblock = memo(
                     <div
                         className={cn(
                             "overflow-auto max-w-full",
-                            // When wrapped, allow normal flow
                             wrapped ? "overflow-x-hidden" : "overflow-x-auto",
-                            // Ensure proper scrollbar styling
                             "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border hover:scrollbar-thumb-border/80"
                         )}
                         style={{
@@ -166,15 +169,14 @@ export const Codeblock = memo(
                             dangerouslySetInnerHTML={{ __html: highlightedCode }}
                             className={cn(
                                 "shiki-container pl-2 font-mono",
-                                // Ensure code doesn't wrap when unwrapped
                                 !wrapped && "whitespace-nowrap",
-                                // Ensure proper width handling
-                                wrapped ? "max-w-full" : "min-w-max"
+                                wrapped ? "max-w-full" : "min-w-max",
+                                !expanded && "max-h-[17em] overflow-hidden"
                             )}
                         />
                     </div>
 
-                    {!expanded && lineNumber > 17 && (
+                    {!expanded && totalLines > 17 && (
                         <div className="absolute right-0 bottom-0 left-0 flex h-12 justify-center rounded-b-md bg-gradient-to-t from-sidebar via-sidebar/80 to-transparent pointer-events-none">
                             <Button
                                 variant="default"
@@ -182,7 +184,7 @@ export const Codeblock = memo(
                                 onClick={() => setExpanded(true)}
                                 className="h-[1.5rem] gap-1.5 rounded-md shadow-lg pointer-events-auto"
                             >
-                                {lineNumber - 17} more lines
+                                {totalLines - 17} more lines
                                 <ChevronDown className="!size-4" />
                             </Button>
                         </div>

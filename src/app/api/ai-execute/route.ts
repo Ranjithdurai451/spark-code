@@ -159,6 +159,7 @@ Required headers and using namespace std;
 Generate ONLY the complete C++ code with proper includes:`
 };
 
+
 // Enhanced function to detect function name and parameters from user code
 function analyzeUserCode(code: string, language: string): { functionName?: string, paramTypes?: string[] } {
   const analysis: { functionName?: string, paramTypes?: string[] } = {};
@@ -365,7 +366,7 @@ export async function POST(req: NextRequest) {
     console.log("🤖 Generating enhanced wrapper...");
 
     const aiResult = await generateText({
-      model: gemini("gemini-1.5-flash"),
+      model: gemini("gemini-2.0-flash"),
       prompt,
     });
 
@@ -451,52 +452,113 @@ export async function POST(req: NextRequest) {
 }
 
 // Enhanced output comparison with better type handling
+// ... existing code ...
+
+// Enhanced output comparison with robust type handling
 function compareOutputs(actual: string, expected: any): boolean {
-  try {
-    const actualStr = actual.trim();
-    const expectedStr = String(expected ?? "").trim();
+  const actualTrimmed = actual.trim();
+  const expectedStr = String(expected).trim();
 
-    // Direct string match (most common case)
-    if (actualStr === expectedStr) return true;
+  // Direct string match (most common case)
+  if (actualTrimmed === expectedStr) return true;
 
-    // Handle array outputs with different formatting
-    if (actualStr.includes("[") && (expectedStr.includes("[") || Array.isArray(expected))) {
-      const normalizeArray = (str: string) => 
-        str.replace(/\s+/g, "")
-           .replace(/\[/g, "[")
-           .replace(/\]/g, "]")
-           .toLowerCase();
-      
-      const normalizedActual = normalizeArray(actualStr);
-      const normalizedExpected = normalizeArray(
-        Array.isArray(expected) ? JSON.stringify(expected) : expectedStr
-      );
-      
-      if (normalizedActual === normalizedExpected) return true;
+  // Handle array outputs
+  if (Array.isArray(expected)) {
+    try {
+      // Try JSON parsing first
+      const actualArray = JSON.parse(actualTrimmed);
+      return deepCompare(actualArray, expected);
+    } catch {
+      // Handle non-JSON array strings
+      if (actualTrimmed.startsWith('[') && actualTrimmed.endsWith(']')) {
+        const items = parseNonJsonArray(actualTrimmed);
+        return compareArrayItems(items, expected);
+      }
     }
-
-    // Enhanced numeric comparison with tolerance
-    const actualNum = parseFloat(actualStr);
-    const expectedNum = parseFloat(expectedStr);
-    if (!isNaN(actualNum) && !isNaN(expectedNum)) {
-      return Math.abs(actualNum - expectedNum) < 1e-9;
-    }
-
-    // Boolean comparison with string variants
-    const boolMap: Record<string, boolean> = { 
-      'true': true, 'false': false, '1': true, '0': false 
-    };
-    if (actualStr.toLowerCase() in boolMap && 
-        (expectedStr.toLowerCase() in boolMap || typeof expected === 'boolean')) {
-      return boolMap[actualStr.toLowerCase()] === 
-             (typeof expected === 'boolean' ? expected : boolMap[expectedStr.toLowerCase()]);
-    }
-
-    // Case-insensitive string comparison
-    return actualStr.toLowerCase() === expectedStr.toLowerCase();
-    
-  } catch (error) {
-    console.warn('Output comparison error:', error);
-    return false;
   }
+
+  // Numeric comparison with tolerance
+  const actualNum = parseFloat(actualTrimmed);
+  const expectedNum = parseFloat(expectedStr);
+  if (!isNaN(actualNum) && !isNaN(expectedNum)) {
+    return Math.abs(actualNum - expectedNum) < 1e-9;
+  }
+
+  // Boolean comparison
+  const boolMap: Record<string, boolean> = {
+    'true': true, 'false': false, '1': true, '0': false
+  };
+  if (actualTrimmed.toLowerCase() in boolMap) {
+    const expectedBool = typeof expected === 'boolean' 
+      ? expected 
+      : boolMap[expectedStr.toLowerCase()];
+    return boolMap[actualTrimmed.toLowerCase()] === expectedBool;
+  }
+
+  // Case-insensitive string comparison
+  return actualTrimmed.toLowerCase() === expectedStr.toLowerCase();
 }
+
+// Helper for deep array comparison
+function deepCompare(actual: any, expected: any): boolean {
+  if (actual === expected) return true;
+
+  if (Array.isArray(actual) && Array.isArray(expected)) {
+    if (actual.length !== expected.length) return false;
+    for (let i = 0; i < expected.length; i++) {
+      if (!deepCompare(actual[i], expected[i])) return false;
+    }
+    return true;
+  }
+
+  // Handle mixed types with coercion
+  if (typeof actual === 'string' && typeof expected === 'number') {
+    const num = Number(actual);
+    return !isNaN(num) && Math.abs(num - expected) < 1e-9;
+  }
+  
+  if (typeof actual === 'number' && typeof expected === 'string') {
+    const num = Number(expected);
+    return !isNaN(num) && Math.abs(actual - num) < 1e-9;
+  }
+  
+  return actual == expected;
+}
+
+// Parse non-JSON array strings (e.g., [JFK, MUC])
+function parseNonJsonArray(actual: string): string[] {
+  const inner = actual.slice(1, -1).trim();
+  if (!inner) return [];
+  
+  return inner.split(',').map(item => {
+    let cleaned = item.trim();
+    // Remove surrounding quotes if present
+    if (/^["'](.*)["']$/.test(cleaned)) {
+      return cleaned.slice(1, -1);
+    }
+    return cleaned;
+  });
+}
+
+// Compare parsed array items with expected values
+function compareArrayItems(items: string[], expected: any[]): boolean {
+  if (items.length !== expected.length) return false;
+  
+  for (let i = 0; i < expected.length; i++) {
+    const expectedItem = expected[i];
+    const actualItem = items[i];
+    
+    if (typeof expectedItem === 'number') {
+      const num = Number(actualItem);
+      if (isNaN(num) || Math.abs(num - expectedItem) > 1e-9) {
+        return false;
+      }
+    } else if (expectedItem !== actualItem) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+// ... existing code ...

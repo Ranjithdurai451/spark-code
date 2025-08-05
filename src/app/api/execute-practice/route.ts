@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       .replace('{testCases}', JSON.stringify(testCases));
 
     const result = await generateText({
-      model: gemini("gemini-2.0-flash-exp"),
+      model: gemini("gemini-2.0-flash"),
       prompt,
     });
 

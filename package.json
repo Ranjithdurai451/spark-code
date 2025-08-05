@@ -47,6 +47,7 @@
     "remark-math": "^6.0.0",
     "shiki": "^3.9.0",
     "sonner": "^2.0.7",
+    "spark-editor": ".",
     "tailwind-merge": "^3.3.1",
     "zustand": "^5.0.6"
   },
