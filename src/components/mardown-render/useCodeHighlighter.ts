@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 import { type Highlighter, createHighlighter } from "shiki"
+import { useThemeStore } from "../features/themes/theme-store"
 
 // Create a singleton highlighter instance
 let highlighterInstance: Highlighter | null = null
@@ -77,7 +78,7 @@ export const useCodeHighlighter = ({
     const [highlightedCode, setHighlightedCode] = useState<string>("")
     const [isHighlighting, setIsHighlighting] = useState(true)
     // Fix 1: Destructure theme properly and provide fallback
-    const { theme } = useTheme()
+    const { themeState } = useThemeStore()
 
     useEffect(() => {
         const highlightCode = async () => {
@@ -95,7 +96,7 @@ export const useCodeHighlighter = ({
                 const langToUse = supportedLangs.includes(language) ? language : "plaintext"
 
                 // Fix 2: Handle theme properly with fallback
-                const currentTheme = theme === "dark" ? "github-dark" : "github-light"
+                const currentTheme = themeState.currentMode === "dark" ? "github-dark" : "github-light"
 
                 const highlighted = highlighter.codeToHtml(codeString, {
                     lang: langToUse,
@@ -134,7 +135,7 @@ export const useCodeHighlighter = ({
         }
 
         highlightCode()
-    }, [codeString, language, expanded, wrapped, inline, shouldHighlight, theme])
+    }, [codeString, language, expanded, wrapped, inline, shouldHighlight, themeState.currentMode])
 
     return {
         highlightedCode,

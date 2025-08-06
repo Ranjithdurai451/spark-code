@@ -1,5 +1,5 @@
 "use client";
-import { Tab, useEditorStore } from "@/store/editorStore";
+import { Tab, useEditorStore } from "@/components/features/editor/editorStore";
 import { useState, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
@@ -7,15 +7,14 @@ import {
     CheckCircle, Clock, ChevronLeft, FileText, Activity,
     Sparkles, Target, Shield, Rocket, Command, Zap
 } from "lucide-react";
-import { AnalysisPanel } from "./panels/AnalysisPanel";
-import { OutputPanel } from "./panels/OutputPanel";
-import { TestCasesPanel } from "./panels/TestCasesPanel";
-import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
-import { Card, CardContent } from "./ui/card";
-import { Separator } from "./ui/separator";
+import { AnalysisPanel } from "./AnalysisPanel";
+import { OutputPanel } from "./OutputPanel";
+import { TestCasesPanel } from "./TestCasesPanel";
 import { cn } from "@/lib/utils";
-import { ScrollArea } from "./ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function SidePanel() {
     const { activeTabId, tabs } = useEditorStore();

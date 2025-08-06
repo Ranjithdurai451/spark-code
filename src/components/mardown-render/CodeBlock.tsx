@@ -1,11 +1,11 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCodeHighlighter } from "@/hooks/useCodeHighlighter";
 import { cn } from "@/lib/utils";
 import { copyToClipboard } from "@/lib/utils";
 import { AlignLeft, CheckIcon, ChevronDown, ChevronUp, CopyIcon, WrapText } from "lucide-react";
 import { memo, useMemo, useState } from "react";
+import { useCodeHighlighter } from "./useCodeHighlighter";
 
 export const Codeblock = memo(
     ({

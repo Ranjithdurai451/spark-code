@@ -1,8 +1,8 @@
 // components/MobileNotSupported.tsx
 "use client";
 import { Monitor, Smartphone, RotateCcw } from "lucide-react";
-import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Button } from "../ui/button";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 
 export default function MobileNotSupported() {
     const handleRefresh = () => {

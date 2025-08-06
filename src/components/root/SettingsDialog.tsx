@@ -1,29 +1,17 @@
 // components/SettingsDialog.tsx
 "use client";
 import { useState } from "react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "./ui/dialog";
-import { Button } from "./ui/button";
-import { Switch } from "./ui/switch";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "./ui/select";
+
 import { Settings, Type, Hash, Terminal, WrapText, Palette } from "lucide-react";
-import { useEditorStore } from "@/store/editorStore";
+import { useEditorStore } from "@/components/features/editor/editorStore";
 import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 export default function SettingsDialog() {
     const [open, setOpen] = useState(false);
-    const { theme, setTheme } = useTheme();
     const {
         fontSize,
         isVimModeEnabled,
@@ -54,22 +42,7 @@ export default function SettingsDialog() {
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
-                    {/* Theme Selection */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                            <Palette className="w-4 h-4 text-muted-foreground" />
-                            <label className="text-sm font-medium">Theme</label>
-                        </div>
-                        <Select value={theme} onValueChange={setTheme}>
-                            <SelectTrigger className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="light">Light</SelectItem>
-                                <SelectItem value="dark">Dark</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+
 
                     {/* Font Size */}
                     <div className="space-y-3">

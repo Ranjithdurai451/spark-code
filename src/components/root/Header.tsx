@@ -2,8 +2,8 @@
 import { Code2, Target, Loader2 } from "lucide-react";
 import SettingsDialog from "./SettingsDialog";
 import { useState } from "react";
-import { Button } from "./ui/button";
 import { useRouter } from "next/navigation";
+import { ThemeSwitcher } from "../features/themes/theme-switcher";
 const Header = () => {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
@@ -58,6 +58,7 @@ const Header = () => {
                 </>
               )}
             </Button> */}
+            <ThemeSwitcher />
 
             {/* Settings Dialog */}
             <SettingsDialog />

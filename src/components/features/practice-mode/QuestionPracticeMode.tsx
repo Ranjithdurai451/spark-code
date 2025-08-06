@@ -24,8 +24,8 @@ import {
     TrendingUp
 } from "lucide-react";
 import { useState } from "react";
-import { Tab } from "@/store/editorStore";
-import { MemoizedMarkdown } from "@/components/MemoizedMarkdown";
+import { Tab } from "@/components/features/editor/editorStore";
+import { MemoizedMarkdown } from "@/components/mardown-render/MemoizedMarkdown";
 import { Editor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 

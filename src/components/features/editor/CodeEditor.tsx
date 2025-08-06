@@ -1,10 +1,10 @@
-// components/CodeEditor.tsx - Keep your existing component as-is, but rename it
 "use client";
 import MonacoEditor from "@monaco-editor/react";
-import { useEditorStore } from "../store/editorStore";
-import Tabs from "./Tabs";
+import { useEditorStore } from "./editorStore";
 import { useTheme } from "next-themes";
 import { useRef, useEffect } from "react";
+import Tabs from "./Tabs";
+import { useThemeStore } from "../themes/theme-store";
 
 // Dynamic import for monaco-vim to avoid SSR issues
 let initVimMode: any = null;
@@ -24,7 +24,7 @@ const loadVimMode = async () => {
 };
 
 export default function CodeEditorComponent() {
-  const { theme } = useTheme();
+  const { themeState } = useThemeStore();
   const {
     tabs,
     activeTabId,
@@ -127,7 +127,7 @@ export default function CodeEditorComponent() {
           height="100%"
           language={activeTab.language}
           value={activeTab.code}
-          theme={theme === "dark" ? "vs-dark" : "light"}
+          theme={themeState.currentMode === "dark" ? "vs-dark" : "light"}
           options={{
             fontSize,
             minimap: { enabled: false },

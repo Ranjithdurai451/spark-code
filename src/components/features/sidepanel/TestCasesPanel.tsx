@@ -33,7 +33,7 @@ import {
     SkipForward
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Tab } from "@/store/editorStore";
+import { Tab } from "@/components/features/editor/editorStore";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -289,6 +289,7 @@ export function TestCasesPanel({
     // Handle external errors
     useEffect(() => {
         if (error) {
+            // @ts-ignore
             const errorDetails = categorizeError(error.message?.message || error.message || 'Unknown error');
             setApiError(errorDetails);
         } else {
@@ -748,6 +749,7 @@ export function TestCasesPanel({
 
                         {/* Enhanced Error Display */}
                         {(error || apiError) && (
+                            // @ts-ignore
                             <ErrorDisplay error={apiError || categorizeError(error?.message?.message || error?.message || 'Unknown error')} />
                         )}
 

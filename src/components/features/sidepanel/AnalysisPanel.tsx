@@ -1,10 +1,10 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Brain, RotateCcw, AlertCircle, Maximize2, Copy, CheckCheck, Loader2, ChevronDown } from "lucide-react";
-import { MemoizedMarkdown } from "@/components/MemoizedMarkdown";
+import { MemoizedMarkdown } from "@/components/mardown-render/MemoizedMarkdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Card, CardContent } from "../ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface AnalysisPanelProps {
     error: Error | null;

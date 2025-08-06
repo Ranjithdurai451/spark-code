@@ -33,8 +33,8 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
-import { MemoizedMarkdown } from "@/components/MemoizedMarkdown";
-import { useEditorStore } from "@/store/editorStore";
+import { MemoizedMarkdown } from "@/components/mardown-render/MemoizedMarkdown";
+import { useEditorStore } from "@/components/features/editor/editorStore";
 
 interface ChatbotModalProps {
     isOpen: boolean;

@@ -1,16 +1,16 @@
 // Simplified page.tsx without window detection
 "use client";
 
-import { DSAChatbotTrigger } from "@/components/Chatbot";
-import CodeEditor from "@/components/CodeEditor";
-import Header from "@/components/Header";
-import SidePanel from "@/components/SidePanel";
-import MobileNotSupported from "@/components/MobileNotSupported";
+import { DSAChatbotTrigger } from "@/components/root/Chatbot";
+import CodeEditor from "@/components/features/editor/CodeEditor";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import Providers from "@/components/root/providers";
+import SidePanel from "@/components/features/sidepanel/SidePanel";
+import Header from "@/components/root/Header";
 
 export default function Home() {
   return (
-    <>
+    <Providers>
       {/* Show mobile message on small screens */}
       {/* <div className="lg:hidden">
         <MobileNotSupported />
@@ -40,6 +40,6 @@ export default function Home() {
         </div>
         <DSAChatbotTrigger />
       </div>
-    </>
+    </Providers >
   );
 }

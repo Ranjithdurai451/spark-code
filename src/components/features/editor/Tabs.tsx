@@ -1,23 +1,13 @@
-import { useEditorStore, languages, Language } from "@/store/editorStore";
+import { useEditorStore, languages, Language } from "@/components/features/editor/editorStore";
+import { Button } from "@/components/ui/button";
+import { DialogHeader } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Plus, X, Edit2, Code } from "lucide-react";
 import { useState } from "react";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  ContextMenuSeparator,
-} from "./ui/context-menu";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from "./ui/select";
+
 
 export default function Tabs() {
   const { tabs, activeTabId, setActiveTabId, addTab, removeTab, updateTab } =

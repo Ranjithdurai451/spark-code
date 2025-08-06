@@ -19,6 +19,7 @@ if (!JUDGE0_KEY) {
     throw new Error("JUDGE0_KEY environment variable is required");
 }
 
+
 export async function POST(req: NextRequest) {
     try {
         const { code, language, input } = await req.json();

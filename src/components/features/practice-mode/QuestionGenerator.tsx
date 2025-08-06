@@ -15,7 +15,7 @@ import {
     Lightbulb,
     ArrowLeft
 } from "lucide-react";
-import { MemoizedMarkdown } from "@/components/MemoizedMarkdown";
+import { MemoizedMarkdown } from "@/components/mardown-render/MemoizedMarkdown";
 
 const DSA_TOPICS = [
     "Arrays", "Strings", "Linked Lists", "Stacks", "Queues",
@@ -115,6 +115,7 @@ export function QuestionGenerator({ onProblemSelect, currentProblem }: QuestionG
     const resetGenerator = () => {
         setMode('initial');
         setProblems([]);
+        //@ts-ignore
         onProblemSelect(null);
         setSelectedTopic("");
         setSelectedLevel("");

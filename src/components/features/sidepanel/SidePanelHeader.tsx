@@ -1,7 +1,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Play, Brain, RotateCcw, StopCircle, TestTube } from "lucide-react";
-import { Tab } from "@/store/editorStore";
+import { Tab } from "@/components/features/editor/editorStore";
 
 interface SidePanelHeaderProps {
     tab: Tab | undefined;
