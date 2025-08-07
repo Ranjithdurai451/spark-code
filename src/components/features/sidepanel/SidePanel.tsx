@@ -3,9 +3,9 @@ import { Tab, useEditorStore } from "@/components/features/editor/editorStore";
 import { useState, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
-    Brain, TestTube2, Play, Code2, ArrowRight,
+    Brain, TestTube2, Play, ArrowRight,
     CheckCircle, Clock, ChevronLeft, FileText, Activity,
-    Sparkles, Target, Shield, Rocket, Command, Zap
+    Sparkles, Target, Rocket
 } from "lucide-react";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { OutputPanel } from "./OutputPanel";
@@ -16,6 +16,101 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+// Enhanced error parsing utility
+function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
+    console.log('Raw error received:', error);
+
+    // Handle different error types more robustly
+    if (!error) {
+        return { message: 'An unexpected error occurred' };
+    }
+
+    // If it's already a properly formatted error object
+    if (error && typeof error === 'object' && !error.message && error.error) {
+        return {
+            message: error.error,
+            suggestion: error.suggestion,
+            category: error.category
+        };
+    }
+
+    // If it's already a properly formatted error object with message
+    if (error && typeof error === 'object' && error.message && !error.message.startsWith('{')) {
+        return {
+            message: error.message,
+            suggestion: error.suggestion,
+            category: error.category
+        };
+    }
+
+    // Handle Error objects with JSON in message
+    if (error instanceof Error) {
+        try {
+            // Try to parse the message as JSON
+            const parsed = JSON.parse(error.message);
+            if (parsed && typeof parsed === 'object') {
+                return {
+                    message: parsed.error || parsed.message || error.message,
+                    suggestion: parsed.suggestion,
+                    category: parsed.category
+                };
+            }
+        } catch {
+            // If JSON parsing fails, use the message as-is
+            return { message: error.message };
+        }
+    }
+
+    // Handle string that might be JSON
+    if (typeof error === 'string') {
+        // Check if it looks like JSON
+        if (error.trim().startsWith('{') && error.trim().endsWith('}')) {
+            try {
+                const parsed = JSON.parse(error);
+                return {
+                    message: parsed.error || parsed.message || 'An error occurred',
+                    suggestion: parsed.suggestion,
+                    category: parsed.category
+                };
+            } catch {
+                return { message: error };
+            }
+        }
+        return { message: error };
+    }
+
+    // Handle object with nested error info
+    if (typeof error === 'object') {
+        // Check for nested error structures
+        if (error.message && typeof error.message === 'string') {
+            if (error.message.startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(error.message);
+                    return {
+                        message: parsed.error || parsed.message || 'An error occurred',
+                        suggestion: parsed.suggestion,
+                        category: parsed.category
+                    };
+                } catch {
+                    return { message: error.message };
+                }
+            }
+            return { message: error.message };
+        }
+
+        // Direct object properties
+        if (error.error || error.message) {
+            return {
+                message: error.error || error.message,
+                suggestion: error.suggestion,
+                category: error.category
+            };
+        }
+    }
+
+    return { message: 'An unexpected error occurred' };
+}
+
 export default function SidePanel() {
     const { activeTabId, tabs } = useEditorStore();
     const [running, setRunning] = useState(false);
@@ -23,44 +118,105 @@ export default function SidePanel() {
     const [activePanel, setActivePanel] = useState<string | null>(null);
     const [hoveredAction, setHoveredAction] = useState<string | null>(null);
 
+    // Enhanced error states with better initialization
+    const [analysisError, setAnalysisError] = useState<{ message: string; suggestion?: string; category?: string } | null>(null);
+    const [testError, setTestError] = useState<{ message: string; suggestion?: string; category?: string } | null>(null);
+
     var tab: Tab | undefined = tabs.find((item) => item.id == activeTabId);
 
-    // Chat hooks
+    // Enhanced chat hooks with comprehensive error handling
     const {
-        messages, append, stop, reload, status, error, setMessages
+        messages, append, stop, reload, status, error: rawAnalysisError, setMessages
     } = useChat({
         api: '/api/analyze',
-        onError: (error) => console.error('Analysis error:', error),
-        onFinish: (message) => console.log('Analysis completed:', message)
+        onError: (error) => {
+            console.error('Analysis error caught:', error);
+            const parsedError = parseApiError(error);
+            console.log('Parsed analysis error:', parsedError);
+            setAnalysisError(parsedError);
+        },
+        onFinish: (message) => {
+            console.log('Analysis completed:', message);
+            setAnalysisError(null); // Clear error on success
+        }
     });
 
     const {
         messages: testMessages, append: appendTest, stop: stopTest,
-        reload: reloadTest, status: testStatus, error: testError, setMessages: setTestMessages
+        reload: reloadTest, status: testStatus, error: rawTestError, setMessages: setTestMessages
     } = useChat({
         api: '/api/generate-tests',
-        onError: (error) => console.error('Test generation error:', error),
-        onFinish: (message) => console.log('Test generation completed:', message)
+        onError: (error) => {
+            console.error('Test generation error caught:', error);
+            const parsedError = parseApiError(error);
+            console.log('Parsed test error:', parsedError);
+            setTestError(parsedError);
+        },
+        onFinish: (message) => {
+            console.log('Test generation completed:', message);
+            setTestError(null); // Clear error on success
+        }
     });
 
     const latestAnalysis = messages.filter(m => m.role === 'assistant').pop();
     const latestTests = testMessages.filter(m => m.role === 'assistant').pop();
-    const isAnalyzing = status === 'streaming' || status === 'submitted';
-    const isGeneratingTests = testStatus === 'streaming' || testStatus === 'submitted';
+    const isAnalyzing = status === 'loading';
+    const isGeneratingTests = testStatus === 'loading';
 
-    // Action handlers
+    // Enhanced error parsing when raw errors change
+    useEffect(() => {
+        if (rawAnalysisError) {
+            console.log('Raw analysis error changed:', rawAnalysisError);
+            const parsedError = parseApiError(rawAnalysisError);
+            console.log('Setting parsed analysis error:', parsedError);
+            setAnalysisError(parsedError);
+        }
+    }, [rawAnalysisError]);
+
+    useEffect(() => {
+        if (rawTestError) {
+            console.log('Raw test error changed:', rawTestError);
+            const parsedError = parseApiError(rawTestError);
+            console.log('Setting parsed test error:', parsedError);
+            setTestError(parsedError);
+        }
+    }, [rawTestError]);
+
+    // Action handlers with better error management
     async function handleAnalyze() {
         if (!tab) {
             alert("Please select a tab to analyze code");
             return;
         }
+
+        console.log('Starting analysis...');
+        setAnalysisError(null); // Clear any previous errors
+
         const { code, language } = tab;
         setActivePanel("analysis");
         setMessages([]);
-        append({
-            role: "user",
-            content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "analysis" } });
+
+        // Client-side validation
+        if (!code || code.trim().length < 10) {
+            const validationError = {
+                message: "Code is too short to analyze",
+                suggestion: "Please provide at least 10 characters of code with some logic",
+                category: "validation"
+            };
+            setAnalysisError(validationError);
+            return;
+        }
+
+        try {
+            await append({
+                role: "user",
+                content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+            }, { body: { code, language, type: "comprehensive" } });
+        } catch (error) {
+            console.error('Error during analysis append:', error);
+            const parsedError = parseApiError(error);
+            setAnalysisError(parsedError);
+        }
     }
 
     async function handleGenerateTests() {
@@ -68,13 +224,35 @@ export default function SidePanel() {
             alert("Please select a tab to generate test cases");
             return;
         }
+
+        console.log('Starting test generation...');
+        setTestError(null); // Clear any previous errors
+
         const { code, language } = tab;
         setActivePanel("testcases");
         setTestMessages([]);
-        appendTest({
-            role: "user",
-            content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "testcases" } });
+
+        // Client-side validation
+        if (!code || code.trim().length < 10) {
+            const validationError = {
+                message: "Code is too short to generate tests",
+                suggestion: "Please provide at least 10 characters of code with some logic",
+                category: "validation"
+            };
+            setTestError(validationError);
+            return;
+        }
+
+        try {
+            await appendTest({
+                role: "user",
+                content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+            }, { body: { code, language, type: "testcases" } });
+        } catch (error) {
+            console.error('Error during test generation append:', error);
+            const parsedError = parseApiError(error);
+            setTestError(parsedError);
+        }
     }
 
     async function handleRun() {
@@ -146,10 +324,86 @@ export default function SidePanel() {
     }, [running, isAnalyzing, isGeneratingTests, tab, activePanel]);
 
     const clearOutput = () => setOutput("");
-    const clearAnalysis = () => setMessages([]);
-    const clearTests = () => setTestMessages([]);
+    const clearAnalysis = () => {
+        setMessages([]);
+        setAnalysisError(null);
+    };
+    const clearTests = () => {
+        setTestMessages([]);
+        setTestError(null);
+    };
 
-    // Compact actions
+    // Enhanced reload functions with better error handling
+    const handleReloadAnalysis = async () => {
+        if (!tab) {
+            alert("Please select a tab to analyze code");
+            return;
+        }
+
+        console.log('Reloading analysis...');
+        setAnalysisError(null); // Clear previous errors
+
+        const { code, language } = tab;
+
+        // Validate before reloading
+        if (!code || code.trim().length < 10) {
+            const validationError = {
+                message: "Code is too short to analyze",
+                suggestion: "Please provide at least 10 characters of code with some logic",
+                category: "validation"
+            };
+            setAnalysisError(validationError);
+            return;
+        }
+
+        try {
+            setMessages([]);
+            await append({
+                role: "user",
+                content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+            }, { body: { code, language, type: "comprehensive" } });
+        } catch (error) {
+            console.error('Error during analysis reload:', error);
+            const parsedError = parseApiError(error);
+            setAnalysisError(parsedError);
+        }
+    };
+
+    const handleReloadTests = async () => {
+        if (!tab) {
+            alert("Please select a tab to generate test cases");
+            return;
+        }
+
+        console.log('Reloading tests...');
+        setTestError(null); // Clear previous errors
+
+        const { code, language } = tab;
+
+        // Validate before reloading
+        if (!code || code.trim().length < 10) {
+            const validationError = {
+                message: "Code is too short to generate tests",
+                suggestion: "Please provide at least 10 characters of code with some logic",
+                category: "validation"
+            };
+            setTestError(validationError);
+            return;
+        }
+
+        try {
+            setTestMessages([]);
+            await appendTest({
+                role: "user",
+                content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+            }, { body: { code, language, type: "testcases" } });
+        } catch (error) {
+            console.error('Error during test reload:', error);
+            const parsedError = parseApiError(error);
+            setTestError(parsedError);
+        }
+    };
+
     const actions = [
         {
             id: "analysis",
@@ -159,6 +413,7 @@ export default function SidePanel() {
             accentIcon: Sparkles,
             isActive: isAnalyzing,
             hasContent: !!latestAnalysis,
+            hasError: !!analysisError,
             onClick: isAnalyzing ? stop : handleAnalyze,
             buttonText: isAnalyzing ? "Stop" : "Analyze",
             shortcut: "Alt+A",
@@ -172,6 +427,7 @@ export default function SidePanel() {
             accentIcon: Target,
             isActive: isGeneratingTests,
             hasContent: !!latestTests,
+            hasError: !!testError,
             onClick: isGeneratingTests ? stopTest : handleGenerateTests,
             buttonText: isGeneratingTests ? "Stop" : "Generate",
             shortcut: "Alt+T",
@@ -185,6 +441,7 @@ export default function SidePanel() {
             accentIcon: Rocket,
             isActive: running,
             hasContent: !!output,
+            hasError: false,
             onClick: handleRun,
             buttonText: running ? "Running..." : "Execute",
             shortcut: "Alt+E",
@@ -196,57 +453,10 @@ export default function SidePanel() {
         <div className="h-full flex flex-col bg-background">
             <div className="flex-1 overflow-hidden">
                 {!activePanel ? (
-                    /* Compact Main Dashboard */
+                    /* Main Dashboard */
                     <ScrollArea className="h-full">
                         <div className="p-4 space-y-4">
-                            {/* Compact Header */}
-                            {/* <div className="text-center space-y-3 py-2">
-                                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground shadow-md">
-                                    <Zap className="w-6 h-6" />
-                                </div>
-                                <div className="space-y-1">
-                                    <h1 className="text-xl font-bold text-foreground">AI Code Assistant</h1>
-                                    <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                                        Enhance your workflow with AI analysis, testing, and execution
-                                    </p>
-                                </div>
-                            </div> */}
-
-                            {/* Compact Keyboard Shortcuts */}
-                            {/* <Card className="bg-muted/20 border border-dashed py-2">
-                                <CardContent className="p-3">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <Command className="w-4 h-4 text-primary" />
-                                        <span className="text-sm font-medium text-foreground">Quick Actions</span>
-                                        <Badge variant="secondary" className="text-xs">Pro</Badge>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 text-xs">
-                                        {[
-                                            { label: "Execute", key: "Alt+E" },
-                                            { label: "Analyze", key: "Alt+A" },
-                                            { label: "Test Gen", key: "Alt+T" },
-                                            { label: "Back", key: "Esc" }
-                                        ].map((shortcut, i) => (
-                                            <div key={i} className="flex items-center justify-between p-2 rounded bg-background/50 border">
-                                                <span className="text-foreground font-medium">{shortcut.label}</span>
-                                                <kbd className="px-2 py-0.5 bg-muted border rounded text-xs font-mono text-muted-foreground">
-                                                    {shortcut.key}
-                                                </kbd>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </CardContent>
-                            </Card> */}
-
-                            {/* Compact Action Cards */}
                             <div className="space-y-3">
-                                {/* <div className="flex items-center justify-between">
-                                    <h2 className="text-lg font-semibold text-foreground">Available Actions</h2>
-                                    <Badge variant="outline" className="text-xs">
-                                        {actions.filter(a => a.hasContent).length}/{actions.length} Complete
-                                    </Badge>
-                                </div> */}
-
                                 {actions.map((action) => {
                                     const IconComponent = action.icon;
                                     const isHovered = hoveredAction === action.id;
@@ -255,11 +465,13 @@ export default function SidePanel() {
                                         <Card
                                             key={action.id}
                                             className={cn(
-                                                "cursor-pointer transition-all duration-200 hover:shadow-md py-6",
+                                                "cursor-pointer transition-all duration-200 hover:shadow-md",
                                                 action.isActive
                                                     ? "border-primary bg-primary/5 shadow-sm"
-                                                    : "border-border hover:border-primary/30",
-                                                action.hasContent && !action.isActive && "bg-muted/20"
+                                                    : action.hasError
+                                                        ? "border-red-500 bg-red-50 dark:bg-red-900/20"
+                                                        : "border-border hover:border-primary/30",
+                                                action.hasContent && !action.isActive && !action.hasError && "bg-muted/20"
                                             )}
                                             onClick={action.onClick}
                                             onMouseEnter={() => setHoveredAction(action.id)}
@@ -267,13 +479,15 @@ export default function SidePanel() {
                                         >
                                             <CardContent className="p-4">
                                                 <div className="flex items-center gap-3">
-                                                    {/* Compact Icon */}
+                                                    {/* Icon Section */}
                                                     <div className="relative flex-shrink-0">
                                                         <div className={cn(
                                                             "p-2.5 rounded-lg transition-all duration-200 border",
                                                             action.isActive
                                                                 ? "bg-primary border-primary text-primary-foreground"
-                                                                : "bg-muted/50 border-border text-foreground hover:bg-primary/10"
+                                                                : action.hasError
+                                                                    ? "bg-red-500 border-red-500 text-white"
+                                                                    : "bg-muted/50 border-border text-foreground hover:bg-primary/10"
                                                         )}>
                                                             <IconComponent className="w-4 h-4" />
                                                         </div>
@@ -282,27 +496,30 @@ export default function SidePanel() {
                                                         <div className={cn(
                                                             "absolute -top-1 -right-1 w-3 h-3 rounded-full border border-background flex items-center justify-center",
                                                             action.isActive && "bg-primary animate-pulse",
-                                                            action.hasContent && !action.isActive && "bg-muted-foreground",
-                                                            !action.hasContent && !action.isActive && "bg-muted/50 opacity-0 group-hover:opacity-100"
+                                                            action.hasError && !action.isActive && "bg-red-500",
+                                                            action.hasContent && !action.isActive && !action.hasError && "bg-green-500",
+                                                            !action.hasContent && !action.isActive && !action.hasError && "bg-muted/50 opacity-0 group-hover:opacity-100"
                                                         )}>
                                                             {action.isActive ? (
                                                                 <Activity className="w-1.5 h-1.5 text-primary-foreground" />
+                                                            ) : action.hasError ? (
+                                                                <div className="w-1.5 h-1.5 bg-white rounded-full" />
                                                             ) : action.hasContent ? (
-                                                                <CheckCircle className="w-1.5 h-1.5 text-background" />
+                                                                <CheckCircle className="w-1.5 h-1.5 text-white" />
                                                             ) : null}
                                                         </div>
                                                     </div>
 
-                                                    {/* Compact Content */}
+                                                    {/* Content Section */}
                                                     <div className="flex-1 min-w-0 space-y-2">
-                                                        {/* Title and Shortcut */}
+                                                        {/* Title and Status Row */}
                                                         <div className="flex items-center justify-between">
                                                             <h3 className="font-semibold text-foreground text-sm leading-tight">
                                                                 {action.title}
                                                             </h3>
                                                             <div className="flex items-center gap-2">
                                                                 <kbd className={cn(
-                                                                    "px-2 py-0.5 rounded text-xs font-mono border",
+                                                                    "px-2 py-0.5 rounded text-xs font-mono border transition-colors",
                                                                     isHovered || action.isActive
                                                                         ? "bg-primary text-primary-foreground border-primary"
                                                                         : "bg-muted text-muted-foreground border-border"
@@ -310,13 +527,18 @@ export default function SidePanel() {
                                                                     {action.shortcut}
                                                                 </kbd>
                                                                 {action.isActive && (
-                                                                    <Badge variant="secondary" className="text-xs py-0">
+                                                                    <Badge variant="secondary" className="text-xs py-0 h-5">
                                                                         <Activity className="w-2 h-2 mr-1 animate-pulse" />
                                                                         Active
                                                                     </Badge>
                                                                 )}
-                                                                {action.hasContent && !action.isActive && (
-                                                                    <Badge variant="secondary" className="text-xs py-0">
+                                                                {action.hasError && !action.isActive && (
+                                                                    <Badge variant="destructive" className="text-xs py-0 h-5">
+                                                                        Error
+                                                                    </Badge>
+                                                                )}
+                                                                {action.hasContent && !action.isActive && !action.hasError && (
+                                                                    <Badge variant="secondary" className="text-xs py-0 h-5 bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
                                                                         <CheckCircle className="w-2 h-2 mr-1" />
                                                                         Ready
                                                                     </Badge>
@@ -335,23 +557,23 @@ export default function SidePanel() {
                                                                 <Badge
                                                                     key={i}
                                                                     variant="outline"
-                                                                    className="text-xs py-0 px-1.5 h-5"
+                                                                    className="text-xs py-0 px-1.5 h-5 opacity-70 hover:opacity-100 transition-opacity"
                                                                 >
                                                                     {feature}
                                                                 </Badge>
                                                             ))}
                                                         </div>
 
-                                                        {/* Compact Action Buttons */}
+                                                        {/* Action Buttons */}
                                                         <div className="flex items-center justify-between pt-1">
                                                             <Button
                                                                 size="sm"
                                                                 disabled={!tab}
                                                                 className={cn(
-                                                                    "h-7 px-3 text-xs",
+                                                                    "h-7 px-3 text-xs transition-all",
                                                                     action.isActive
-                                                                        ? "bg-destructive hover:bg-destructive/90"
-                                                                        : "bg-primary hover:bg-primary/90"
+                                                                        ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                                                                        : "bg-primary hover:bg-primary/90 text-primary-foreground"
                                                                 )}
                                                             >
                                                                 {action.isActive ? (
@@ -367,17 +589,17 @@ export default function SidePanel() {
                                                                 )}
                                                             </Button>
 
-                                                            {action.hasContent && (
+                                                            {(action.hasContent || action.hasError) && (
                                                                 <Button
                                                                     size="sm"
                                                                     variant="ghost"
-                                                                    className="h-7 px-3 text-xs hover:bg-muted/50"
+                                                                    className="h-7 px-3 text-xs hover:bg-muted/50 transition-colors"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         setActivePanel(action.id);
                                                                     }}
                                                                 >
-                                                                    View Results
+                                                                    {action.hasError ? 'View Error' : 'View Results'}
                                                                     <ArrowRight className="w-3 h-3 ml-1" />
                                                                 </Button>
                                                             )}
@@ -390,9 +612,9 @@ export default function SidePanel() {
                                 })}
                             </div>
 
-                            {/* Compact No File State */}
+                            {/* No File State */}
                             {!tab && (
-                                <Card className="border-dashed border-muted-foreground/30 bg-muted/10 mt-4">
+                                <Card className="border-dashed border-muted-foreground/30 bg-muted/10 mt-6">
                                     <CardContent className="p-6 text-center space-y-3">
                                         <div className="w-12 h-12 mx-auto rounded-xl bg-muted/50 flex items-center justify-center">
                                             <FileText className="w-6 h-6 text-muted-foreground/70" />
@@ -402,10 +624,14 @@ export default function SidePanel() {
                                             <p className="text-sm text-muted-foreground">
                                                 Open a code file to unlock AI-powered features
                                             </p>
-                                            <div className="flex items-center justify-center gap-2">
+                                            <div className="flex items-center justify-center gap-2 pt-2">
                                                 <Badge variant="secondary" className="text-xs">
                                                     <Sparkles className="w-3 h-3 mr-1" />
                                                     AI-Powered
+                                                </Badge>
+                                                <Badge variant="outline" className="text-xs">
+                                                    <Brain className="w-3 h-3 mr-1" />
+                                                    Smart Analysis
                                                 </Badge>
                                             </div>
                                         </div>
@@ -415,10 +641,10 @@ export default function SidePanel() {
                         </div>
                     </ScrollArea>
                 ) : (
-                    /* Compact Panel View */
+                    /* Panel View */
                     <div className="h-full flex flex-col">
-                        {/* Compact Panel Header */}
-                        <div className="px-4 py-3 border-b bg-muted/10">
+                        {/* Panel Header */}
+                        <div className="px-4 py-3 border-b bg-muted/10 backdrop-blur-sm">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     {(() => {
@@ -426,11 +652,16 @@ export default function SidePanel() {
                                         const IconComponent = currentAction?.icon || Brain;
                                         return (
                                             <>
-                                                <div className="p-2 rounded-lg bg-primary text-primary-foreground shadow-sm">
+                                                <div className={cn(
+                                                    "p-2 rounded-lg shadow-sm",
+                                                    currentAction?.hasError
+                                                        ? "bg-red-500 text-white"
+                                                        : "bg-primary text-primary-foreground"
+                                                )}>
                                                     <IconComponent className="w-4 h-4" />
                                                 </div>
                                                 <div>
-                                                    <h2 className="font-semibold text-foreground">
+                                                    <h2 className="font-semibold text-foreground text-sm">
                                                         {currentAction?.title || 'Results'}
                                                     </h2>
                                                     <p className="text-xs text-muted-foreground">
@@ -450,7 +681,7 @@ export default function SidePanel() {
                                         variant="ghost"
                                         size="sm"
                                         onClick={() => setActivePanel(null)}
-                                        className="h-8 px-3 text-xs"
+                                        className="h-8 px-3 text-xs hover:bg-muted/50"
                                     >
                                         <ChevronLeft className="w-3 h-3 mr-1" />
                                         Back
@@ -459,31 +690,26 @@ export default function SidePanel() {
                             </div>
                         </div>
 
+                        {/* Panel Content */}
                         <div className="flex-1 overflow-hidden">
                             {activePanel === "analysis" && (
                                 <AnalysisPanel
-                                    error={error ?? null}
+                                    error={analysisError}
                                     latestAnalysis={latestAnalysis}
                                     isAnalyzing={isAnalyzing}
                                     onClear={clearAnalysis}
-                                    onReload={() => {
-                                        if (!tab) {
-                                            alert("Please select a tab to analyze code");
-                                            return;
-                                        }
-                                        reload({ body: { code: tab.code, language: tab.language, type: "analysis" } })
-                                    }}
+                                    onReload={handleReloadAnalysis}
                                     status={status}
                                 />
                             )}
                             {activePanel === "testcases" && (
                                 <TestCasesPanel
                                     tab={tab}
-                                    error={testError ?? null}
+                                    error={testError}
                                     latestTests={latestTests}
                                     isGeneratingTests={isGeneratingTests}
                                     onClear={clearTests}
-                                    onReload={reloadTest}
+                                    onReload={handleReloadTests}
                                     status={testStatus}
                                 />
                             )}

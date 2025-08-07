@@ -30,7 +30,9 @@ import {
     AlertTriangle,
     Info,
     Pause,
-    SkipForward
+    SkipForward,
+    TrendingUp,
+    Activity
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Tab } from "@/components/features/editor/editorStore";
@@ -59,7 +61,7 @@ interface TestCase {
 
 interface TestCasesPanelProps {
     tab: Tab | undefined;
-    error: Error | null;
+    error: { message: string; suggestion?: string; category?: string } | null;
     latestTests: any;
     isGeneratingTests: boolean;
     status: string;
@@ -178,7 +180,6 @@ export function TestCasesPanel({
             };
         }
 
-        // Default generic error
         return {
             type: 'execution',
             title: 'Execution Error',
@@ -210,20 +211,17 @@ export function TestCasesPanel({
         }
 
         try {
-            // Check for AI error responses first
             if (content.includes('"error"') && content.includes('NO_FUNCTION_FOUND')) {
                 const errorDetails = categorizeError('no_function_found', 'ai_generation');
                 setApiError(errorDetails);
                 return cases;
             }
 
-            // Try to parse as JSON array
             const jsonMatch = content.match(/\[[\s\S]*\]/);
             if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 if (Array.isArray(parsed)) {
                     return parsed.map((testCase, index) => {
-                        // Validate test case structure
                         if (!testCase.input || testCase.output === undefined) {
                             console.warn(`Test case ${index + 1} has invalid structure:`, testCase);
                             return null;
@@ -240,7 +238,6 @@ export function TestCasesPanel({
                 }
             }
 
-            // Fallback parsing for markdown format
             const pattern = /\*\*Input:\*\*\s*([^\n*]+)\s*\*\*(?:Expected\s*)?Output:\*\*\s*([^\n*]+)/gi;
             let match;
             let index = 0;
@@ -286,19 +283,22 @@ export function TestCasesPanel({
         }
     }, [latestTests, isGeneratingTests, parseTestCases, apiError]);
 
-    // Handle external errors
+    // Handle external errors - Updated to use the same format as AnalysisPanel
     useEffect(() => {
         if (error) {
-            // @ts-ignore
-            const errorDetails = categorizeError(error.message?.message || error.message || 'Unknown error');
-            setApiError(errorDetails);
+            setApiError({
+                type: 'execution',
+                title: 'Test Generation Failed',
+                description: error.message,
+                suggestion: error.suggestion,
+                retryable: true
+            });
         } else {
-            // Only clear API error if it matches the external error
             if (apiError?.type === 'network' || apiError?.type === 'api') {
                 setApiError(null);
             }
         }
-    }, [error, apiError, categorizeError]);
+    }, [error, apiError]);
 
     // Smart auto-scroll for streaming content
     useEffect(() => {
@@ -328,7 +328,7 @@ export function TestCasesPanel({
         if (isGeneratingTests) {
             isUserScrollingRef.current = false;
             lastContentLengthRef.current = 0;
-            setApiError(null); // Clear errors when starting new generation
+            setApiError(null);
         }
     }, [isGeneratingTests]);
 
@@ -349,7 +349,7 @@ export function TestCasesPanel({
 
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 30000);
 
             const res = await fetch("/api/ai-execute", {
                 method: "POST",
@@ -383,7 +383,6 @@ export function TestCasesPanel({
                 } : tc
             ));
 
-            // Auto-expand failed tests and show detailed feedback
             if (!data.passed) {
                 setExpandedTests(prev => new Set([...prev, testCase.id]));
                 toast.error(`Test ${testCase.id.replace(/.*-/, '')} failed`, {
@@ -448,14 +447,12 @@ export function TestCasesPanel({
             setCurrentTestIndex(i);
             await runTest(testCases[i]);
 
-            // Update counters based on result
             const updatedTestCase = testCases[i];
             if (updatedTestCase.status === 'passed') passedCount++;
             else if (updatedTestCase.status === 'failed') failedCount++;
 
             setProgress(((i + 1) / testCases.length) * 100);
 
-            // Small delay between tests to improve UX
             if (i < testCases.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
@@ -464,7 +461,6 @@ export function TestCasesPanel({
         setRunningTests(false);
         setCurrentTestIndex(0);
 
-        // Enhanced completion feedback
         if (!pauseRequested) {
             const totalRun = passedCount + failedCount;
             if (passedCount === totalRun && totalRun > 0) {
@@ -583,124 +579,61 @@ export function TestCasesPanel({
     // Format display values
     const formatValue = (value: any): string => {
         if (typeof value === 'string') return value;
-        // return JSON.stringify(value, null, 2);
         return JSON.stringify(value);
     };
 
-    // const formatLeetCodeInput = (input: any[]): string => {
-    //     if (!Array.isArray(input)) return formatValue(input);
-    //     if (input.length === 1) return formatValue(input[0]);
-    //     return input.map(param => formatValue(param)).join(', ');
-    // };
     const formatLeetCodeInput = (input: any[]): string => {
         if (!Array.isArray(input)) return formatValue(input);
         if (input.length === 1) return formatValue(input[0]);
-        // Join parameters with compact formatting
         return input.map(param => formatValue(param)).join(', ');
     };
 
-    // Enhanced status display with animations
+    // Enhanced status display using only shadcn colors
     const getStatusDisplay = (testCase: TestCase) => {
         switch (testCase.status) {
             case 'running':
                 return {
-                    icon: <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />,
-                    badge: <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 animate-pulse">Running</Badge>,
-                    color: 'border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20'
+                    icon: <Loader2 className="w-4 h-4 animate-spin" />,
+                    badge: <Badge variant="secondary" className="animate-pulse">Running</Badge>,
+                    color: 'border-border hover:border-muted-foreground/50'
                 };
             case 'passed':
                 return {
-                    icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
-                    badge: <Badge className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-100">Passed</Badge>,
-                    color: 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20'
+                    icon: <CheckCircle2 className="w-4 h-4" />,
+                    badge: <Badge variant="secondary">Passed</Badge>,
+                    color: 'border-border bg-muted/30'
                 };
             case 'failed':
                 return {
-                    icon: <XCircle className="w-4 h-4 text-red-500" />,
-                    badge: <Badge variant="destructive">Failed</Badge>,
-                    color: 'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20'
+                    icon: <XCircle className="w-4 h-4" />,
+                    badge: <Badge variant="outline">Failed</Badge>,
+                    color: 'border-muted-foreground/30 bg-muted/20'
                 };
             case 'skipped':
                 return {
-                    icon: <SkipForward className="w-4 h-4 text-yellow-500" />,
-                    badge: <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100">Skipped</Badge>,
-                    color: 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-950/20'
+                    icon: <SkipForward className="w-4 h-4 text-muted-foreground" />,
+                    badge: <Badge variant="secondary">Skipped</Badge>,
+                    color: 'border-muted-foreground/20 bg-muted/10'
                 };
             default:
                 return {
-                    icon: <Clock className="w-4 h-4 text-gray-400" />,
+                    icon: <Clock className="w-4 h-4 text-muted-foreground" />,
                     badge: <Badge variant="outline">Pending</Badge>,
                     color: 'border-border'
                 };
         }
     };
 
-    // Enhanced error display component
-    const ErrorDisplay = ({ error: errorDetails }: { error: ErrorDetails }) => {
-        const getErrorIcon = () => {
-            switch (errorDetails.type) {
-                case 'validation': return <AlertTriangle className="h-4 w-4" />;
-                case 'network': return <ExternalLink className="h-4 w-4" />;
-                case 'timeout': return <Clock className="h-4 w-4" />;
-                case 'parsing': return <FileText className="h-4 w-4" />;
-                case 'api': return <Bot className="h-4 w-4" />;
-                default: return <AlertCircle className="h-4 w-4" />;
-            }
-        };
+    // Clear errors and reset
+    const handleClearError = () => {
+        setApiError(null);
+        onClear();
+    };
 
-        const getErrorColor = () => {
-            switch (errorDetails.type) {
-                case 'validation': return 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/30';
-                case 'network': return 'border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30';
-                case 'timeout': return 'border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30';
-                default: return 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30';
-            }
-        };
-
-        return (
-            <Alert className={`${getErrorColor()} border`}>
-                <div className="flex items-start gap-3">
-                    <div className="mt-0.5">
-                        {getErrorIcon()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <AlertDescription>
-                            <div className="space-y-2">
-                                <div>
-                                    <h4 className="font-medium text-sm">{errorDetails.title}</h4>
-                                    <p className="text-sm text-muted-foreground">{errorDetails.description}</p>
-                                </div>
-
-                                {errorDetails.suggestion && (
-                                    <div className="flex items-start gap-2 p-2 bg-background/50 rounded border border-border/50">
-                                        <Info className="h-3 w-3 mt-0.5 text-muted-foreground flex-shrink-0" />
-                                        <p className="text-xs text-muted-foreground">{errorDetails.suggestion}</p>
-                                    </div>
-                                )}
-
-                                <div className="flex items-center gap-2">
-                                    {errorDetails.retryable && (
-                                        <Button onClick={onReload} variant="outline" size="sm" className="h-7 text-xs">
-                                            <RotateCcw className="w-3 h-3 mr-1" />
-                                            Retry
-                                        </Button>
-                                    )}
-                                    <Button
-                                        onClick={() => setApiError(null)}
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 text-xs"
-                                    >
-                                        <X className="w-3 h-3 mr-1" />
-                                        Dismiss
-                                    </Button>
-                                </div>
-                            </div>
-                        </AlertDescription>
-                    </div>
-                </div>
-            </Alert>
-        );
+    // Handle retry with proper error clearing
+    const handleRetry = () => {
+        setApiError(null);
+        onReload();
     };
 
     const passedTests = testCases.filter(tc => tc.status === 'passed').length;
@@ -714,97 +647,148 @@ export function TestCasesPanel({
             <div className="h-full flex flex-col min-w-0">
                 <div
                     ref={scrollContainerRef}
-                    className="flex-1 overflow-y-auto overflow-x-hidden"
-                    style={{
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: 'rgb(156 163 175) transparent',
-                        scrollBehavior: 'smooth'
-                    }}
+                    className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/20 hover:scrollbar-thumb-muted-foreground/40"
                     onScroll={handleScroll}
                 >
-                    <div className="p-3 space-y-3 max-w-full">
-                        {/* Enhanced Header */}
+                    <div className="p-4 space-y-4 max-w-full">
+                        {/* Enhanced Header with improved spacing and hierarchy */}
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
-                                    <Brain className="w-5 h-5 text-primary" />
+                            <div className="flex items-center gap-4">
+                                <div className="p-2.5 rounded-xl bg-muted border shadow-sm">
+                                    <Brain className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h2 className="text-base font-semibold">AI Test Runner</h2>
-                                    <p className="text-xs text-muted-foreground">Intelligent code testing with analysis</p>
+                                    <h2 className="text-lg font-semibold tracking-tight">AI Test Runner</h2>
+                                    <p className="text-sm text-muted-foreground">Intelligent code testing with analysis</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
+                                <Badge variant="outline" className="text-xs font-mono">
                                     <Code className="w-3 h-3 mr-1" />
                                     {tab?.language?.toUpperCase() || 'CODE'}
                                 </Badge>
                                 {totalTests > 0 && (
                                     <Badge variant="secondary" className="text-xs">
+                                        <Activity className="w-3 h-3 mr-1" />
                                         {totalTests} test{totalTests !== 1 ? 's' : ''}
                                     </Badge>
                                 )}
                             </div>
                         </div>
 
-                        {/* Enhanced Error Display */}
+                        {/* Enhanced Error Display - Updated to match AnalysisPanel styling */}
                         {(error || apiError) && (
-                            // @ts-ignore
-                            <ErrorDisplay error={apiError || categorizeError(error?.message?.message || error?.message || 'Unknown error')} />
+                            <Card className="border-red-500 bg-red-50 dark:bg-red-900/20">
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-3">
+                                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-medium text-red-800 dark:text-red-300 mb-1">Test Generation Failed</h3>
+
+                                            {/* User-friendly error message */}
+                                            <p className="text-sm text-red-700 dark:text-red-200 mb-2 break-words">
+                                                {apiError?.description || error?.message || 'An unexpected error occurred during test generation'}
+                                            </p>
+
+                                            {/* Show suggestion if available */}
+                                            {(apiError?.suggestion || error?.suggestion) && (
+                                                <div className="mb-3 p-2 bg-red-100 dark:bg-red-800/30 rounded border border-red-200 dark:border-red-700">
+                                                    <p className="text-xs text-red-800 dark:text-red-200">
+                                                        <strong>💡 Suggestion:</strong> {apiError?.suggestion || error?.suggestion}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Show category if available */}
+                                            {(apiError?.category || error?.category) && (
+                                                <div className="mb-3">
+                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200">
+                                                        {apiError?.category || error?.category}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    onClick={handleRetry}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
+                                                    disabled={isGeneratingTests}
+                                                >
+                                                    <RotateCcw className="w-3 h-3 mr-1" />
+                                                    {isGeneratingTests ? 'Retrying...' : 'Retry Generation'}
+                                                </Button>
+                                                <Button
+                                                    onClick={handleClearError}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-300 dark:hover:bg-red-900/20"
+                                                >
+                                                    Clear Error
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
                         )}
 
                         {!error && !apiError && (
                             <>
-                                {/* Enhanced Stats Dashboard */}
+                                {/* Enhanced Stats Dashboard with better visual hierarchy */}
                                 {totalTests > 0 && (
-                                    <Card className="border-2">
-                                        <CardContent className="p-4">
-                                            <div className="grid grid-cols-4 gap-4 mb-4">
-                                                <div className="text-center p-2 rounded-lg bg-muted/50">
-                                                    <div className="text-lg font-bold text-primary">{totalTests}</div>
-                                                    <div className="text-xs text-muted-foreground">Total</div>
+                                    <Card className="border-2 shadow-sm">
+                                        <CardContent className="p-5">
+                                            <div className="grid grid-cols-4 gap-3 mb-5">
+                                                <div className="text-center p-3 rounded-lg bg-muted/50 border">
+                                                    <div className="text-2xl font-bold">{totalTests}</div>
+                                                    <div className="text-xs text-muted-foreground font-medium">Total</div>
                                                 </div>
-                                                <div className="text-center p-2 rounded-lg bg-green-50 dark:bg-green-950/30">
-                                                    <div className="text-lg font-bold text-green-600">{passedTests}</div>
-                                                    <div className="text-xs text-muted-foreground">Passed</div>
+                                                <div className="text-center p-3 rounded-lg bg-background border-2 shadow-sm">
+                                                    <div className="text-2xl font-bold">{passedTests}</div>
+                                                    <div className="text-xs text-muted-foreground font-medium">Passed</div>
                                                 </div>
-                                                <div className="text-center p-2 rounded-lg bg-red-50 dark:bg-red-950/30">
-                                                    <div className="text-lg font-bold text-red-600">{failedTests}</div>
-                                                    <div className="text-xs text-muted-foreground">Failed</div>
+                                                <div className="text-center p-3 rounded-lg bg-muted/30 border">
+                                                    <div className="text-2xl font-bold">{failedTests}</div>
+                                                    <div className="text-xs text-muted-foreground font-medium">Failed</div>
                                                 </div>
-                                                <div className="text-center p-2 rounded-lg bg-primary/10">
-                                                    <div className="text-lg font-bold">{Math.round(successRate)}%</div>
-                                                    <div className="text-xs text-muted-foreground">Success</div>
+                                                <div className="text-center p-3 rounded-lg bg-background border shadow-sm">
+                                                    <div className="text-2xl font-bold">{Math.round(successRate)}%</div>
+                                                    <div className="text-xs text-muted-foreground font-medium">Success</div>
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="font-medium">Progress</span>
-                                                    <span>{passedTests}/{totalTests} passed</span>
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="font-medium flex items-center gap-2">
+                                                        <TrendingUp className="w-4 h-4" />
+                                                        Progress
+                                                    </span>
+                                                    <span className="font-mono">{passedTests}/{totalTests}</span>
                                                 </div>
-                                                <Progress value={successRate} className="h-2" />
+                                                <Progress value={successRate} className="h-2.5" />
                                             </div>
 
                                             {passedTests === totalTests && totalTests > 0 && (
-                                                <div className="mt-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 rounded-lg border border-green-200 dark:border-green-800">
-                                                    <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                                                        <CheckCircle2 className="w-4 h-4" />
-                                                        <span className="text-sm font-medium">All tests passed! 🎉</span>
+                                                <div className="mt-4 p-4 bg-muted/30 rounded-lg border-2 border-dashed">
+                                                    <div className="flex items-center gap-2">
+                                                        <CheckCircle2 className="w-5 h-5" />
+                                                        <span className="text-sm font-semibold">All tests passed! 🎉</span>
                                                     </div>
-                                                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                                    <p className="text-xs text-muted-foreground mt-2">
                                                         Your solution works correctly for all test cases
                                                     </p>
                                                 </div>
                                             )}
 
                                             {failedTests > 0 && (
-                                                <div className="mt-3 p-3 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-950/30 dark:to-pink-950/30 rounded-lg border border-red-200 dark:border-red-800">
-                                                    <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
-                                                        <XCircle className="w-4 h-4" />
-                                                        <span className="text-sm font-medium">{failedTests} test{failedTests > 1 ? 's' : ''} failed</span>
+                                                <div className="mt-4 p-4 bg-muted/20 rounded-lg border">
+                                                    <div className="flex items-center gap-2">
+                                                        <XCircle className="w-5 h-5" />
+                                                        <span className="text-sm font-semibold">{failedTests} test{failedTests > 1 ? 's' : ''} failed</span>
                                                     </div>
-                                                    <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                                    <p className="text-xs text-muted-foreground mt-2">
                                                         Review the failed tests below for detailed analysis
                                                     </p>
                                                 </div>
@@ -813,17 +797,17 @@ export function TestCasesPanel({
                                     </Card>
                                 )}
 
-                                {/* Enhanced Action Controls */}
-                                <Card>
-                                    <CardContent className="p-3">
+                                {/* Enhanced Action Controls with better grouping */}
+                                <Card className="shadow-sm">
+                                    <CardContent className="p-4">
                                         <div className="flex flex-wrap gap-2">
                                             <Button
                                                 onClick={() => setShowAddDialog(true)}
                                                 variant="outline"
                                                 size="sm"
-                                                className="h-8 text-xs"
+                                                className="h-9 shadow-sm"
                                             >
-                                                <Plus className="w-3 h-3 mr-1" />
+                                                <Plus className="w-4 h-4 mr-2" />
                                                 Add Test
                                             </Button>
 
@@ -833,20 +817,22 @@ export function TestCasesPanel({
                                                         onClick={runningTests ? pauseTests : runAllTests}
                                                         disabled={isGeneratingTests}
                                                         size="sm"
-                                                        className="h-8 text-xs"
+                                                        className="h-9 shadow-sm"
                                                     >
                                                         {runningTests ? (
                                                             <>
-                                                                <Pause className="w-3 h-3 mr-1" />
+                                                                <Pause className="w-4 h-4 mr-2" />
                                                                 Pause
                                                             </>
                                                         ) : (
                                                             <>
-                                                                <Zap className="w-3 h-3 mr-1" />
+                                                                <Zap className="w-4 h-4 mr-2" />
                                                                 Run All ({totalTests})
                                                             </>
                                                         )}
                                                     </Button>
+
+                                                    <Separator orientation="vertical" className="h-6" />
 
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
@@ -855,9 +841,9 @@ export function TestCasesPanel({
                                                                 variant="ghost"
                                                                 size="sm"
                                                                 disabled={totalTests === 0}
-                                                                className="h-8 text-xs"
+                                                                className="h-9"
                                                             >
-                                                                <ChevronDown className="w-3 h-3 mr-1" />
+                                                                <ChevronDown className="w-4 h-4 mr-2" />
                                                                 Expand All
                                                             </Button>
                                                         </TooltipTrigger>
@@ -873,9 +859,9 @@ export function TestCasesPanel({
                                                                 variant="ghost"
                                                                 size="sm"
                                                                 disabled={totalTests === 0}
-                                                                className="h-8 text-xs"
+                                                                className="h-9"
                                                             >
-                                                                <ChevronRight className="w-3 h-3 mr-1" />
+                                                                <ChevronRight className="w-4 h-4 mr-2" />
                                                                 Collapse All
                                                             </Button>
                                                         </TooltipTrigger>
@@ -887,15 +873,18 @@ export function TestCasesPanel({
                                             )}
 
                                             {latestTests && (
-                                                <Button
-                                                    onClick={onClear}
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                                                >
-                                                    <X className="w-3 h-3 mr-1" />
-                                                    Clear All
-                                                </Button>
+                                                <>
+                                                    <div className="flex-1" />
+                                                    <Button
+                                                        onClick={handleClearError}
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-9 text-muted-foreground hover:text-foreground"
+                                                    >
+                                                        <X className="w-4 h-4 mr-2" />
+                                                        Clear All
+                                                    </Button>
+                                                </>
                                             )}
                                         </div>
                                     </CardContent>
@@ -903,28 +892,28 @@ export function TestCasesPanel({
 
                                 {/* Enhanced Progress Indicator */}
                                 {runningTests && (
-                                    <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20">
-                                        <CardContent className="p-3">
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="flex items-center gap-2">
-                                                        <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                    <Card className="border-2 bg-muted/20 shadow-sm">
+                                        <CardContent className="p-4">
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="flex items-center gap-2 text-sm font-medium">
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
                                                         Running test {currentTestIndex + 1} of {totalTests}
                                                     </span>
-                                                    <span className="font-medium">{Math.round(progress)}%</span>
+                                                    <span className="font-mono text-sm">{Math.round(progress)}%</span>
                                                 </div>
-                                                <Progress value={progress} className="h-2" />
+                                                <Progress value={progress} className="h-2.5" />
                                                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                                    <span>
+                                                    <span className="font-medium">
                                                         {passedTests} passed • {failedTests} failed • {skippedTests} skipped
                                                     </span>
                                                     <Button
                                                         onClick={pauseTests}
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="h-6 text-xs"
+                                                        className="h-7 text-xs"
                                                     >
-                                                        <Pause className="w-2 h-2 mr-1" />
+                                                        <Pause className="w-3 h-3 mr-1" />
                                                         Stop
                                                     </Button>
                                                 </div>
@@ -933,7 +922,7 @@ export function TestCasesPanel({
                                     </Card>
                                 )}
 
-                                {/* Enhanced Test Cases Display */}
+                                {/* Enhanced Test Cases Display with improved visual hierarchy */}
                                 {!isGeneratingTests && (
                                     <div className="space-y-3">
                                         {testCases.map((testCase, index) => {
@@ -944,71 +933,80 @@ export function TestCasesPanel({
                                             return (
                                                 <Card
                                                     key={testCase.id}
-                                                    className={`transition-all py-0 duration-200 hover:shadow-md ${color} ${isRunning ? 'ring-2 ring-blue-500/50' : ''}`}
+                                                    className={`transition-all duration-300 hover:shadow-md ${color} ${isRunning ? 'ring-2 ring-offset-2 ring-muted-foreground/20' : ''} ${isExpanded ? 'shadow-lg' : 'shadow-sm'}`}
                                                 >
                                                     <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(testCase.id)}>
                                                         <CollapsibleTrigger asChild>
-                                                            <CardHeader className="py-6 cursor-pointer hover:bg-muted/50 transition-colors">
+                                                            <CardHeader className="py-5 cursor-pointer hover:bg-muted/20 transition-colors duration-200 rounded-t-lg">
                                                                 <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-3 min-w-0">
-                                                                        {icon}
-                                                                        <div className="min-w-0">
-                                                                            <CardTitle className="text-sm flex items-center gap-2">
+                                                                    <div className="flex items-center gap-4 min-w-0">
+                                                                        <div className="p-2 rounded-lg bg-background border shadow-sm">
+                                                                            {icon}
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <CardTitle className="text-sm flex items-center gap-3">
                                                                                 Test Case {index + 1}
                                                                                 {testCase.isCustom && (
-                                                                                    <Badge variant="outline" className="text-xs px-1">Custom</Badge>
+                                                                                    <Badge variant="outline" className="text-xs px-2 py-0.5">
+                                                                                        <Target className="w-3 h-3 mr-1" />
+                                                                                        Custom
+                                                                                    </Badge>
                                                                                 )}
                                                                             </CardTitle>
-                                                                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                                                                            <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
                                                                                 {testCase.executionTime && (
-                                                                                    <span className="flex items-center gap-1">
+                                                                                    <span className="flex items-center gap-1 font-mono">
                                                                                         <Timer className="w-3 h-3" />
                                                                                         {testCase.executionTime}ms
                                                                                     </span>
                                                                                 )}
-                                                                                <span className="truncate max-w-[200px]">
+                                                                                <span className="truncate max-w-[250px] font-mono">
                                                                                     Input: {formatLeetCodeInput(testCase.input)}
                                                                                 </span>
                                                                             </div>
                                                                         </div>
                                                                     </div>
-                                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                                    <div className="flex items-center gap-3 flex-shrink-0">
                                                                         {badge}
-                                                                        {isExpanded ? (
-                                                                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                                                                        ) : (
-                                                                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                                                                        )}
+                                                                        <div className="p-1 rounded hover:bg-muted/50 transition-colors">
+                                                                            {isExpanded ? (
+                                                                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                                                            ) : (
+                                                                                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                                                            )}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             </CardHeader>
                                                         </CollapsibleTrigger>
 
                                                         <CollapsibleContent>
-                                                            <CardContent className="pt-0">
-                                                                <Separator className="mb-4" />
+                                                            <CardContent className="pt-0 pb-5">
+                                                                <Separator className="mb-5" />
 
-                                                                <div className="space-y-4 pb-4">
-                                                                    {/* Enhanced Input/Output Display */}
-                                                                    <div className="grid gap-3">
+                                                                <div className="space-y-5">
+                                                                    {/* Enhanced Input/Output Display with better spacing */}
+                                                                    <div className="space-y-4">
                                                                         <div className="space-y-2">
-                                                                            <Label className="text-sm font-medium text-muted-foreground">
+                                                                            <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                                                                                <FileText className="w-4 h-4" />
                                                                                 Input Parameters
                                                                             </Label>
-                                                                            <div className="p-3 bg-muted/50 rounded-lg border border-border/50">
-                                                                                <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                                                                            <div className="p-4 bg-muted/30 rounded-lg border shadow-inner">
+                                                                                <pre className="text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">
                                                                                     {formatLeetCodeInput(testCase.input)}
                                                                                 </pre>
                                                                             </div>
                                                                         </div>
 
-                                                                        <div className="grid md:grid-cols-2 gap-3">
+                                                                        <div className="grid md:grid-cols-2 gap-4">
                                                                             <div className="space-y-2">
-                                                                                <Label className="text-sm font-medium text-green-700 dark:text-green-400">
+                                                                                <Label className="text-sm font-semibold flex items-center gap-2">
+                                                                                    <Target className="w-4 h-4" />
                                                                                     Expected Output
                                                                                 </Label>
-                                                                                <div className="p-3 bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800 rounded-lg">
-                                                                                    <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                                                                                <div className="p-4 bg-background border-2 border-dashed rounded-lg shadow-inner">
+                                                                                    <pre className="text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">
                                                                                         {formatValue(testCase.output)}
                                                                                     </pre>
                                                                                 </div>
@@ -1016,17 +1014,15 @@ export function TestCasesPanel({
 
                                                                             {testCase.actualOutput !== undefined && (
                                                                                 <div className="space-y-2">
-                                                                                    <Label className={`text-sm font-medium ${testCase.status === 'passed'
-                                                                                        ? 'text-green-700 dark:text-green-400'
-                                                                                        : 'text-red-700 dark:text-red-400'
-                                                                                        }`}>
+                                                                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                                                                        <Activity className="w-4 h-4" />
                                                                                         Actual Output
                                                                                     </Label>
-                                                                                    <div className={`p-3 rounded-lg border ${testCase.status === 'passed'
-                                                                                        ? 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800'
-                                                                                        : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
+                                                                                    <div className={`p-4 rounded-lg border-2 shadow-inner ${testCase.status === 'passed'
+                                                                                        ? 'bg-background border-border'
+                                                                                        : 'bg-muted/30 border-muted-foreground/30'
                                                                                         }`}>
-                                                                                        <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                                                                                        <pre className="text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">
                                                                                             {formatValue(testCase.actualOutput)}
                                                                                         </pre>
                                                                                     </div>
@@ -1038,12 +1034,12 @@ export function TestCasesPanel({
                                                                     {/* Enhanced Error Display */}
                                                                     {testCase.error && (
                                                                         <div className="space-y-2">
-                                                                            <Label className="text-sm font-medium text-red-700 dark:text-red-400 flex items-center gap-2">
+                                                                            <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                                                                                 <AlertCircle className="w-4 h-4" />
                                                                                 Error Details
                                                                             </Label>
-                                                                            <div className="p-3 bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800 rounded-lg">
-                                                                                <pre className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
+                                                                            <div className="p-4 bg-muted/20 border-2 border-muted-foreground/30 rounded-lg shadow-inner">
+                                                                                <pre className="text-sm font-mono text-muted-foreground whitespace-pre-wrap break-words leading-relaxed">
                                                                                     {testCase.error}
                                                                                 </pre>
                                                                             </div>
@@ -1053,12 +1049,12 @@ export function TestCasesPanel({
                                                                     {/* Enhanced AI Analysis */}
                                                                     {testCase.explanation && (
                                                                         <div className="space-y-2">
-                                                                            <Label className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                                                                            <Label className="text-sm font-semibold flex items-center gap-2">
                                                                                 <Brain className="w-4 h-4" />
                                                                                 AI Analysis
                                                                             </Label>
-                                                                            <div className="p-3 bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 rounded-lg">
-                                                                                <p className="text-xs text-blue-700 dark:text-blue-300 break-words">
+                                                                            <div className="p-4 bg-background border-2 border-dashed rounded-lg shadow-inner">
+                                                                                <p className="text-sm break-words leading-relaxed">
                                                                                     {testCase.explanation}
                                                                                 </p>
                                                                             </div>
@@ -1066,22 +1062,22 @@ export function TestCasesPanel({
                                                                     )}
 
                                                                     {/* Enhanced Action Buttons */}
-                                                                    <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+                                                                    <div className="flex items-center gap-3 pt-3 border-t">
                                                                         <Button
                                                                             onClick={() => runTest(testCase)}
                                                                             disabled={testCase.status === 'running' || runningTests}
                                                                             variant="outline"
                                                                             size="sm"
-                                                                            className="h-7 text-xs"
+                                                                            className="h-8 shadow-sm"
                                                                         >
                                                                             {testCase.status === 'running' ? (
                                                                                 <>
-                                                                                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                                                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
                                                                                     Running...
                                                                                 </>
                                                                             ) : (
                                                                                 <>
-                                                                                    <PlayCircle className="w-3 h-3 mr-1" />
+                                                                                    <PlayCircle className="w-4 h-4 mr-2" />
                                                                                     Run Test
                                                                                 </>
                                                                             )}
@@ -1093,9 +1089,9 @@ export function TestCasesPanel({
                                                                                     onClick={() => copyTestCase(testCase)}
                                                                                     variant="ghost"
                                                                                     size="sm"
-                                                                                    className="h-7 text-xs"
+                                                                                    className="h-8 w-8 p-0"
                                                                                 >
-                                                                                    <Copy className="w-3 h-3" />
+                                                                                    <Copy className="w-4 h-4" />
                                                                                 </Button>
                                                                             </TooltipTrigger>
                                                                             <TooltipContent>
@@ -1108,9 +1104,9 @@ export function TestCasesPanel({
                                                                                 onClick={() => skipTest(testCase.id)}
                                                                                 variant="ghost"
                                                                                 size="sm"
-                                                                                className="h-7 text-xs text-yellow-600 hover:text-yellow-700"
+                                                                                className="h-8 text-muted-foreground"
                                                                             >
-                                                                                <SkipForward className="w-3 h-3 mr-1" />
+                                                                                <SkipForward className="w-4 h-4 mr-2" />
                                                                                 Skip
                                                                             </Button>
                                                                         )}
@@ -1121,9 +1117,9 @@ export function TestCasesPanel({
                                                                             onClick={() => removeTest(testCase.id)}
                                                                             variant="ghost"
                                                                             size="sm"
-                                                                            className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                                            className="h-8 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                                                         >
-                                                                            <Trash2 className="w-3 h-3 mr-1" />
+                                                                            <Trash2 className="w-4 h-4 mr-2" />
                                                                             Remove
                                                                         </Button>
                                                                     </div>
@@ -1139,24 +1135,24 @@ export function TestCasesPanel({
 
                                 {/* Enhanced Empty State */}
                                 {testCases.length === 0 && !isGeneratingTests && (
-                                    <Card className="text-center border-2 border-dashed">
-                                        <CardContent className="p-8">
-                                            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-4">
-                                                <TestTube className="w-8 h-8 text-muted-foreground" />
+                                    <Card className="text-center border-2 border-dashed shadow-sm">
+                                        <CardContent className="p-10">
+                                            <div className="mx-auto w-20 h-20 bg-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                                                <TestTube className="w-10 h-10 text-muted-foreground" />
                                             </div>
-                                            <h3 className="text-base font-medium mb-2">No Test Cases</h3>
-                                            <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-                                                Create custom test cases or let AI generate them based on your code.
+                                            <h3 className="text-lg font-semibold mb-3">No Test Cases</h3>
+                                            <p className="text-sm text-muted-foreground mb-8 max-w-sm mx-auto leading-relaxed">
+                                                Create custom test cases or let AI generate them based on your code to get started.
                                             </p>
-                                            <div className="flex gap-3 justify-center">
-                                                <Button onClick={() => setShowAddDialog(true)} className="h-9">
+                                            <div className="flex gap-4 justify-center">
+                                                <Button onClick={() => setShowAddDialog(true)} className="shadow-sm">
                                                     <Plus className="w-4 h-4 mr-2" />
                                                     Add Custom Test
                                                 </Button>
                                                 <Button
-                                                    onClick={onReload}
+                                                    onClick={handleRetry}
                                                     variant="outline"
-                                                    className="h-9"
+                                                    className="shadow-sm"
                                                     disabled={isGeneratingTests}
                                                 >
                                                     {isGeneratingTests ? (
@@ -1178,19 +1174,19 @@ export function TestCasesPanel({
 
                                 {/* Enhanced Loading State */}
                                 {isGeneratingTests && (
-                                    <Card className="text-center border-2 border-primary/20 bg-primary/5">
-                                        <CardContent className="p-8">
-                                            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary/20 to-primary/10 rounded-full flex items-center justify-center mb-4">
-                                                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                                    <Card className="text-center border-2 bg-muted/20 shadow-sm">
+                                        <CardContent className="p-10">
+                                            <div className="mx-auto w-20 h-20 bg-background border shadow-inner rounded-full flex items-center justify-center mb-6">
+                                                <Loader2 className="w-10 h-10 animate-spin" />
                                             </div>
-                                            <h3 className="text-base font-medium mb-2">Generating Test Cases</h3>
-                                            <p className="text-sm text-muted-foreground mb-4">
+                                            <h3 className="text-lg font-semibold mb-3">Generating Test Cases</h3>
+                                            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
                                                 AI is analyzing your code and creating appropriate test cases...
                                             </p>
                                             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                                                <div className="w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                <div className="w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                <div className="w-1 h-1 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                                <div className="w-2 h-2 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                                <div className="w-2 h-2 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                                <div className="w-2 h-2 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -1202,30 +1198,33 @@ export function TestCasesPanel({
 
                 {/* Enhanced Add Test Dialog */}
                 <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-                    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2 text-lg">
-                                <Plus className="w-5 h-5" />
+                            <DialogTitle className="flex items-center gap-3 text-xl">
+                                <div className="p-2 rounded-lg bg-muted border">
+                                    <Plus className="w-5 h-5" />
+                                </div>
                                 Add Custom Test Case
                             </DialogTitle>
                         </DialogHeader>
 
-                        <Tabs defaultValue="simple" className="w-full">
-                            <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="simple" className="flex items-center gap-2">
+                        <Tabs defaultValue="simple" className="w-full mt-4">
+                            <TabsList className="grid w-full grid-cols-2 p-1">
+                                <TabsTrigger value="simple" className="flex items-center gap-2 data-[state=active]:shadow-sm">
                                     <FileText className="w-4 h-4" />
                                     Simple Format
                                 </TabsTrigger>
-                                <TabsTrigger value="json" className="flex items-center gap-2">
+                                <TabsTrigger value="json" className="flex items-center gap-2 data-[state=active]:shadow-sm">
                                     <Code className="w-4 h-4" />
                                     JSON Format
                                 </TabsTrigger>
                             </TabsList>
 
-                            <TabsContent value="simple" className="space-y-4 mt-6">
-                                <div className="grid gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="simple-input" className="text-sm font-medium">
+                            <TabsContent value="simple" className="space-y-6 mt-6">
+                                <div className="grid gap-5">
+                                    <div className="space-y-3">
+                                        <Label htmlFor="simple-input" className="text-sm font-semibold flex items-center gap-2">
+                                            <FileText className="w-4 h-4" />
                                             Input Parameters
                                         </Label>
                                         <Input
@@ -1233,14 +1232,15 @@ export function TestCasesPanel({
                                             value={newTestInput}
                                             onChange={(e) => setNewTestInput(e.target.value)}
                                             placeholder='Example: [2,7,11,15], 9'
-                                            className="font-mono"
+                                            className="font-mono h-12 shadow-sm"
                                         />
-                                        <p className="text-xs text-muted-foreground">
-                                            Enter function parameters separated by commas
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Enter function parameters separated by commas. Arrays and objects should be in JSON format.
                                         </p>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="simple-output" className="text-sm font-medium">
+                                    <div className="space-y-3">
+                                        <Label htmlFor="simple-output" className="text-sm font-semibold flex items-center gap-2">
+                                            <Target className="w-4 h-4" />
                                             Expected Output
                                         </Label>
                                         <Input
@@ -1248,19 +1248,20 @@ export function TestCasesPanel({
                                             value={newTestOutput}
                                             onChange={(e) => setNewTestOutput(e.target.value)}
                                             placeholder='Example: [0,1]'
-                                            className="font-mono"
+                                            className="font-mono h-12 shadow-sm"
                                         />
-                                        <p className="text-xs text-muted-foreground">
-                                            Enter the expected result from your function
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Enter the expected result from your function. Use JSON format for complex data types.
                                         </p>
                                     </div>
                                 </div>
                             </TabsContent>
 
-                            <TabsContent value="json" className="space-y-4 mt-6">
-                                <div className="grid gap-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="json-input" className="text-sm font-medium">
+                            <TabsContent value="json" className="space-y-6 mt-6">
+                                <div className="grid gap-5">
+                                    <div className="space-y-3">
+                                        <Label htmlFor="json-input" className="text-sm font-semibold flex items-center gap-2">
+                                            <Code className="w-4 h-4" />
                                             Input Parameters (JSON Array)
                                         </Label>
                                         <Textarea
@@ -1268,14 +1269,15 @@ export function TestCasesPanel({
                                             value={newTestInput}
                                             onChange={(e) => setNewTestInput(e.target.value)}
                                             placeholder='[[2, 7, 11, 15], 9]'
-                                            className="font-mono h-24 resize-none"
+                                            className="font-mono h-12 resize-none shadow-sm"
                                         />
-                                        <p className="text-xs text-muted-foreground">
-                                            Each function parameter should be an element in the array
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Each function parameter should be an element in the JSON array. Complex data structures are supported.
                                         </p>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="json-output" className="text-sm font-medium">
+                                    <div className="space-y-3">
+                                        <Label htmlFor="json-output" className="text-sm font-semibold flex items-center gap-2">
+                                            <Target className="w-4 h-4" />
                                             Expected Output (JSON)
                                         </Label>
                                         <Textarea
@@ -1283,10 +1285,10 @@ export function TestCasesPanel({
                                             value={newTestOutput}
                                             onChange={(e) => setNewTestOutput(e.target.value)}
                                             placeholder='[0, 1]'
-                                            className="font-mono h-24 resize-none"
+                                            className="font-mono h-12 resize-none shadow-sm"
                                         />
-                                        <p className="text-xs text-muted-foreground">
-                                            The expected return value in JSON format
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            The expected return value in JSON format. Supports all data types including nested objects and arrays.
                                         </p>
                                     </div>
                                 </div>
@@ -1294,15 +1296,15 @@ export function TestCasesPanel({
                         </Tabs>
 
                         {apiError && (
-                            <Alert className="border-destructive/50 bg-destructive/5 mt-4">
-                                <AlertCircle className="h-4 w-4 text-destructive" />
-                                <AlertDescription className="text-destructive text-sm">
+                            <Alert className="border-muted-foreground/30 bg-muted/20 mt-4">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription className="text-sm">
                                     <strong>{apiError.title}:</strong> {apiError.description}
                                 </AlertDescription>
                             </Alert>
                         )}
 
-                        <DialogFooter className="gap-2 mt-6">
+                        <DialogFooter className="gap-3 mt-6">
                             <Button
                                 variant="outline"
                                 onClick={() => {
@@ -1311,219 +1313,13 @@ export function TestCasesPanel({
                                     setNewTestOutput("");
                                     setApiError(null);
                                 }}
+                                className="shadow-sm"
                             >
                                 Cancel
                             </Button>
-                            <Button onClick={addTest}>
+                            <Button onClick={addTest} className="shadow-sm">
                                 <Plus className="w-4 h-4 mr-2" />
                                 Add Test Case
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
-                {/* Enhanced Analysis Dialog */}
-                <Dialog open={showAnalysisDialog} onOpenChange={setShowAnalysisDialog}>
-                    <DialogContent className="max-w-5xl max-h-[90vh]">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2 text-lg">
-                                <Brain className="w-5 h-5" />
-                                Detailed Test Analysis
-                            </DialogTitle>
-                        </DialogHeader>
-
-                        {selectedTestCase && (
-                            <div className="max-h-[70vh] overflow-y-auto pr-2">
-                                <div className="space-y-6">
-                                    {/* Test Overview */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="text-base flex items-center gap-2">
-                                                <Target className="w-4 h-4" />
-                                                Test Overview
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="grid grid-cols-4 gap-4">
-                                                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                                                    <div className="text-xs text-muted-foreground mb-1">Status</div>
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        {getStatusDisplay(selectedTestCase).icon}
-                                                        <span className="font-medium capitalize text-sm">{selectedTestCase.status}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                                                    <div className="text-xs text-muted-foreground mb-1">Execution Time</div>
-                                                    <div className="font-medium text-sm">
-                                                        {selectedTestCase.executionTime ? `${selectedTestCase.executionTime}ms` : 'N/A'}
-                                                    </div>
-                                                </div>
-                                                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                                                    <div className="text-xs text-muted-foreground mb-1">Output Match</div>
-                                                    <div className="font-medium text-sm">
-                                                        {selectedTestCase.status === 'passed' ? '✅ Yes' :
-                                                            selectedTestCase.status === 'failed' ? '❌ No' : '⏳ Pending'}
-                                                    </div>
-                                                </div>
-                                                <div className="text-center p-3 bg-muted/50 rounded-lg">
-                                                    <div className="text-xs text-muted-foreground mb-1">Test Type</div>
-                                                    <div className="font-medium text-sm">
-                                                        {selectedTestCase.isCustom ? '👤 Custom' : '🤖 AI Generated'}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Input/Output Comparison */}
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle className="text-base flex items-center gap-2">
-                                                <FileText className="w-4 h-4" />
-                                                Input/Output Analysis
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-4">
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <Label className="text-sm font-medium mb-2 block">Input Parameters</Label>
-                                                    <div className="p-4 bg-muted/50 rounded-lg border border-border/50">
-                                                        <pre className="text-sm font-mono whitespace-pre-wrap break-all">
-                                                            {formatValue(selectedTestCase.input)}
-                                                        </pre>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid md:grid-cols-2 gap-4">
-                                                    <div>
-                                                        <Label className="text-sm font-medium text-green-700 dark:text-green-400 mb-2 block">
-                                                            Expected Output
-                                                        </Label>
-                                                        <div className="p-4 bg-green-50 border border-green-200 dark:bg-green-950/30 dark:border-green-800 rounded-lg">
-                                                            <pre className="text-sm font-mono whitespace-pre-wrap break-all">
-                                                                {formatValue(selectedTestCase.output)}
-                                                            </pre>
-                                                        </div>
-                                                    </div>
-
-                                                    {selectedTestCase.actualOutput !== undefined && (
-                                                        <div>
-                                                            <Label className={`text-sm font-medium mb-2 block ${selectedTestCase.status === 'passed'
-                                                                ? 'text-green-700 dark:text-green-400'
-                                                                : 'text-red-700 dark:text-red-400'
-                                                                }`}>
-                                                                Actual Output
-                                                            </Label>
-                                                            <div className={`p-4 rounded-lg border ${selectedTestCase.status === 'passed'
-                                                                ? 'bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800'
-                                                                : 'bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800'
-                                                                }`}>
-                                                                <pre className="text-sm font-mono whitespace-pre-wrap break-all">
-                                                                    {formatValue(selectedTestCase.actualOutput)}
-                                                                </pre>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* AI Analysis Section */}
-                                    {selectedTestCase.explanation && (
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-base flex items-center gap-2">
-                                                    <Bot className="w-4 h-4" />
-                                                    AI Analysis & Insights
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="p-4 bg-blue-50 border border-blue-200 dark:bg-blue-950/30 dark:border-blue-800 rounded-lg">
-                                                    <div className="prose prose-sm max-w-none">
-                                                        <p className="text-sm text-blue-900 dark:text-blue-100 break-words leading-relaxed">
-                                                            {selectedTestCase.explanation}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    )}
-
-                                    {/* Error Analysis */}
-                                    {selectedTestCase.error && (
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-base flex items-center gap-2 text-red-700 dark:text-red-400">
-                                                    <AlertCircle className="w-4 h-4" />
-                                                    Error Analysis
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="space-y-3">
-                                                    <div className="p-4 bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800 rounded-lg">
-                                                        <h4 className="text-sm font-medium text-red-900 dark:text-red-100 mb-2">
-                                                            Error Details
-                                                        </h4>
-                                                        <pre className="text-sm font-mono text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
-                                                            {selectedTestCase.error}
-                                                        </pre>
-                                                    </div>
-
-                                                    <div className="p-3 bg-yellow-50 border border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-800 rounded-lg">
-                                                        <div className="flex items-start gap-2">
-                                                            <Info className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                                                            <div>
-                                                                <h4 className="text-sm font-medium text-yellow-900 dark:text-yellow-100 mb-1">
-                                                                    Debugging Suggestions
-                                                                </h4>
-                                                                <ul className="text-xs text-yellow-800 dark:text-yellow-200 space-y-1">
-                                                                    <li>• Check your function's return type and format</li>
-                                                                    <li>• Verify input parameter handling</li>
-                                                                    <li>• Look for syntax or compilation errors</li>
-                                                                    <li>• Test with simpler inputs first</li>
-                                                                </ul>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    )}
-
-                                    {/* Performance Metrics */}
-                                    {selectedTestCase.executionTime && (
-                                        <Card>
-                                            <CardHeader>
-                                                <CardTitle className="text-base flex items-center gap-2">
-                                                    <Timer className="w-4 h-4" />
-                                                    Performance Metrics
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="p-3 bg-muted/50 rounded-lg text-center">
-                                                        <div className="text-lg font-bold text-primary">{selectedTestCase.executionTime}ms</div>
-                                                        <div className="text-xs text-muted-foreground">Execution Time</div>
-                                                    </div>
-                                                    <div className="p-3 bg-muted/50 rounded-lg text-center">
-                                                        <div className="text-lg font-bold text-muted-foreground">
-                                                            {selectedTestCase.executionTime < 100 ? '🚀 Fast' :
-                                                                selectedTestCase.executionTime < 1000 ? '⚡ Normal' : '🐌 Slow'}
-                                                        </div>
-                                                        <div className="text-xs text-muted-foreground">Performance</div>
-                                                    </div>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        <DialogFooter className="mt-6">
-                            <Button onClick={() => setShowAnalysisDialog(false)}>
-                                Close Analysis
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -1531,4 +1327,4 @@ export function TestCasesPanel({
             </div>
         </TooltipProvider>
     );
-} 
+}

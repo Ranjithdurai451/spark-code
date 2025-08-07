@@ -180,7 +180,7 @@ You are conducting a professional code review for this {language} code.
 class CodeExtractor {
   private static readonly CODE_BLOCK_PATTERNS = [
     // Fenced code blocks with language
-    /```(\w+)?\n?([\s\S]*?)```/g,
+    /``````/g,
     
     // Inline code
     /`([^`\n]{10,})`/g,
@@ -233,7 +233,7 @@ class CodeExtractor {
       typescript: [/interface\s+\w+/, /type\s+\w+\s*=/, /:\s*\w+(\[\])?/, /export\s+(interface|type|class)/],
       go: [/func\s+\w+\s*\(/, /package\s+\w+/, /import\s+\(/, /fmt\.Print/],
       rust: [/fn\s+\w+\s*\(/, /let\s+mut/, /println!/, /impl\s+\w+/, /use\s+std::/],
-      php: [/<\?php/, /function\s+\w+\s*\(/, /echo\s+/, /\$\w+\s*=/],
+      php: [/<?php/, /function\s+\w+\s*\(/, /echo\s+/, /\$\w+\s*=/],
       ruby: [/def\s+\w+/, /end\s*$/, /puts\s+/, /@\w+\s*=/],
       csharp: [/using\s+System/, /public\s+class/, /Console\.WriteLine/, /int\s+Main\s*\(/]
     };

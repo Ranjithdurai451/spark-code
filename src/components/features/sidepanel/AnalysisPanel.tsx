@@ -7,7 +7,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface AnalysisPanelProps {
-    error: Error | null;
+    error: { message: string; suggestion?: string; category?: string } | null;
     latestAnalysis: any;
     isAnalyzing: boolean;
     status: string;
@@ -40,10 +40,6 @@ export function AnalysisPanel({
         const nearBottom = distanceFromBottom <= threshold;
         setIsNearBottom(nearBottom);
 
-        // Show scroll button when:
-        // 1. Not near bottom
-        // 2. There's scrollable content
-        // 3. We have analysis content to scroll through
         setShowScrollButton(
             !nearBottom &&
             scrollHeight > clientHeight &&
@@ -51,7 +47,7 @@ export function AnalysisPanel({
         );
     }, [latestAnalysis?.content, isAnalyzing]);
 
-    // Handle scroll events with throttling for performance
+    // Handle scroll events
     const handleScroll = useCallback(() => {
         checkScrollPosition();
     }, [checkScrollPosition]);
@@ -69,10 +65,7 @@ export function AnalysisPanel({
     // Check scroll position when content changes
     useEffect(() => {
         if (latestAnalysis?.content) {
-            // Small delay to ensure DOM is updated
-            setTimeout(() => {
-                checkScrollPosition();
-            }, 50);
+            setTimeout(() => checkScrollPosition(), 50);
         }
     }, [latestAnalysis?.content, checkScrollPosition]);
 
@@ -99,33 +92,64 @@ export function AnalysisPanel({
                 <div
                     ref={scrollViewportRef}
                     className="h-full overflow-y-auto overflow-x-hidden"
-                    style={{
-                        scrollbarWidth: 'thin',
-                        scrollbarColor: 'rgb(156 163 175) transparent',
-                        scrollBehavior: 'smooth'
-                    }}
                     onScroll={handleScroll}
                 >
                     <div className="p-3 min-h-full max-w-full">
                         {error ? (
-                            <div className="border border-destructive/50 bg-destructive/5 rounded-lg p-4 max-w-full overflow-hidden">
-                                <div className="flex items-start gap-3">
-                                    <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="font-medium text-destructive mb-1">Analysis Failed</h3>
-                                        <p className="text-sm text-destructive/80 mb-3 break-words">{error.message}</p>
-                                        <Button
-                                            onClick={onReload}
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-8 text-xs"
-                                        >
-                                            <RotateCcw className="w-3 h-3 mr-1" />
-                                            Retry
-                                        </Button>
+                            <Card className="border-red-500 bg-red-50 dark:bg-red-900/20">
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-3">
+                                        <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-medium text-red-800 dark:text-red-300 mb-1">Analysis Failed</h3>
+
+                                            {/* User-friendly error message */}
+                                            <p className="text-sm text-red-700 dark:text-red-200 mb-2 break-words">
+                                                {error.message}
+                                            </p>
+
+                                            {/* Show suggestion if available */}
+                                            {error.suggestion && (
+                                                <div className="mb-3 p-2 bg-red-100 dark:bg-red-800/30 rounded border border-red-200 dark:border-red-700">
+                                                    <p className="text-xs text-red-800 dark:text-red-200">
+                                                        <strong>💡 Suggestion:</strong> {error.suggestion}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {/* Show category if available */}
+                                            {error.category && (
+                                                <div className="mb-3">
+                                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200">
+                                                        {error.category}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    onClick={onReload}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
+                                                    disabled={isAnalyzing}
+                                                >
+                                                    <RotateCcw className="w-3 h-3 mr-1" />
+                                                    {isAnalyzing ? 'Retrying...' : 'Retry Analysis'}
+                                                </Button>
+                                                <Button
+                                                    onClick={onClear}
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 text-xs border-red-300 text-red-700 hover:bg-red-50 dark:border-red-600 dark:text-red-300 dark:hover:bg-red-900/20"
+                                                >
+                                                    Clear Error
+                                                </Button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+                                </CardContent>
+                            </Card>
                         ) : latestAnalysis ? (
                             <div className="space-y-3 max-w-full">
                                 {/* Fixed sticky header */}
@@ -218,7 +242,7 @@ export function AnalysisPanel({
                 </div>
             </div>
 
-            {/* Scroll to Bottom Button - t3.chat style */}
+            {/* Scroll to Bottom Button */}
             {showScrollButton && (
                 <div className="absolute inset-x-0 bottom-4 flex justify-center z-20">
                     <Button
@@ -228,9 +252,7 @@ export function AnalysisPanel({
                         className="h-9 w-9 rounded-full bg-background/80 shadow border border-border flex items-center justify-center p-0 hover:bg-background/60 transition-all"
                         aria-label="Scroll to bottom"
                     >
-                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="mx-auto" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M5 8l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
+                        <ChevronDown className="w-4 h-4" />
                     </Button>
                 </div>
             )}
@@ -264,7 +286,6 @@ export function AnalysisPanel({
                             </Button>
                         </div>
                     </DialogHeader>
-
                     <div
                         className="max-h-[calc(95vh-100px)] overflow-y-auto overflow-x-hidden"
                         style={{

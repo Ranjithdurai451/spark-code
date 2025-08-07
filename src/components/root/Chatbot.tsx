@@ -361,6 +361,11 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                     <div
                         ref={scrollViewportRef}
                         onScroll={handleScroll}
+                        // style={{
+                        //     scrollbarWidth: 'thin',
+                        //     scrollbarColor: 'rgb(156 163 175) transparent',
+                        //     scrollBehavior: 'smooth'
+                        // }}
                         className="h-full overflow-y-auto"
                     >
                         {/* Welcome State */}
