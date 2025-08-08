@@ -24,7 +24,7 @@ export interface LanguageConfig {
 }
 
 /**
- * Language configurations with LeetCode-appropriate default code templates
+ * Language configurations with simple Hello World templates
  */
 export const languages: LanguageConfig[] = [
   {
@@ -32,10 +32,13 @@ export const languages: LanguageConfig[] = [
     filename: "Main.java",
     displayName: "Java",
     extension: "java",
-    defaultCode: `public class Main {
-    // Write your solution method here
-    // Example: public int[] twoSum(int[] nums, int target) { ... }
-    
+    defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
+// Example: Two Sum, Binary Search, etc.
+
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello World");
+    }
 }`,
   },
   {
@@ -43,62 +46,69 @@ export const languages: LanguageConfig[] = [
     filename: "solution.py",
     displayName: "Python",
     extension: "py",
-    defaultCode: `class Solution:
-    # Write your solution method here
-    # Example: def two_sum(self, nums: List[int], target: int) -> List[int]:
-    pass
-`,
+    defaultCode: `# Write a LeetCode-like problem in a function to analyze and generate tests in comments
+# Example: Two Sum, Binary Search, etc.
+
+print("Hello World")`,
   },
   {
     name: "javascript",
     filename: "solution.js",
     displayName: "JavaScript",
     extension: "js",
-    defaultCode: `/**
- * Write your solution function here
- * Example: function twoSum(nums, target) { ... }
- */
+    defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
+// Example: Two Sum, Binary Search, etc.
 
-`,
+console.log("Hello World");`,
   },
   {
     name: "cpp",
     filename: "solution.cpp",
     displayName: "C++",
     extension: "cpp",
-    defaultCode: `class Solution {
-public:
-    // Write your solution method here
-    // Example: vector<int> twoSum(vector<int>& nums, int target) { ... }
-    
-};`,
+    defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
+// Example: Two Sum, Binary Search, etc.
+
+#include <iostream>
+
+int main() {
+    std::cout << "Hello World" << std::endl;
+    return 0;
+}`,
   },
   {
     name: "c",
     filename: "solution.c",
     displayName: "C",
     extension: "c",
-    defaultCode: `#include <stdio.h>
-#include <stdlib.h>
+    defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
+// Example: Two Sum, Binary Search, etc.
 
-// Write your solution function here
-// Example: int* twoSum(int* nums, int numsSize, int target, int* returnSize) { ... }
+#include <stdio.h>
 
-`,
+int main() {
+    printf("Hello World\\n");
+    return 0;
+}`,
   },
   {
     name: "go",
     filename: "solution.go",
     displayName: "Go",
     extension: "go",
-    defaultCode: `package main
+    defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
+// Example: Two Sum, Binary Search, etc.
 
-// Write your solution function here
-// Example: func twoSum(nums []int, target int) []int { ... }
+package main
 
-`,
+import "fmt"
+
+func main() {
+    fmt.Println("Hello World")
+}`,
   },
 ];
+
 
 /**
  * Represents an editor tab with code content
