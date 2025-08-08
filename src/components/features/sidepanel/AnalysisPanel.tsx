@@ -23,6 +23,7 @@ export function AnalysisPanel({
     onClear,
     onReload
 }: AnalysisPanelProps) {
+    console.log("analysis panel", error)
     const [showMaximizedView, setShowMaximizedView] = useState(false);
     const [copied, setCopied] = useState(false);
     const [showScrollButton, setShowScrollButton] = useState(false);
@@ -114,6 +115,7 @@ export function AnalysisPanel({
                                                     <p className="text-xs text-red-800 dark:text-red-200">
                                                         <strong>💡 Suggestion:</strong> {error.suggestion}
                                                     </p>
+
                                                 </div>
                                             )}
 
@@ -226,15 +228,13 @@ export function AnalysisPanel({
 
                         {/* Compact streaming status */}
                         {isAnalyzing && !latestAnalysis && (
-                            <Card className="text-center">
+                            <Card className="text-center border-2 bg-muted/20">
                                 <CardContent className="p-6">
-                                    <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3">
-                                        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                                    <div className="mx-auto w-12 h-12 bg-background rounded-full border flex items-center justify-center mb-3">
+                                        <Loader2 className="w-6 h-6 animate-spin" />
                                     </div>
-                                    <h3 className="text-sm font-medium mb-2">Generating Code Analysis</h3>
-                                    <p className="text-xs text-muted-foreground">
-                                        AI is analyzing your code...
-                                    </p>
+                                    <h3 className="text-sm font-medium mb-2">Analyzing your code…</h3>
+                                    <p className="text-xs text-muted-foreground">Please wait while we generate insights.</p>
                                 </CardContent>
                             </Card>
                         )}

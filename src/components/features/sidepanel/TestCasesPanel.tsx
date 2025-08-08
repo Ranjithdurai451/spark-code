@@ -32,7 +32,11 @@ import {
     Pause,
     SkipForward,
     TrendingUp,
-    Activity
+    Activity,
+    Database,
+    Cpu,
+    Network,
+    Layers
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Tab } from "@/components/features/editor/editorStore";
@@ -56,12 +60,18 @@ interface TestCase {
     error?: string;
     explanation?: string;
     executionTime?: number;
+    memoryUsage?: number;
     isCustom?: boolean;
+    // New fields from updated endpoint
+    functionTested?: string;
+    algorithmPattern?: string;
+    dataStructuresUsed?: string[];
+    processingTime?: number;
 }
 
 interface TestCasesPanelProps {
     tab: Tab | undefined;
-    error: { message: string; suggestion?: string; category?: string } | null;
+    error: ApiError | null; // Updated to use ApiError interface
     latestTests: any;
     isGeneratingTests: boolean;
     status: string;
@@ -69,13 +79,30 @@ interface TestCasesPanelProps {
     onReload: () => void;
 }
 
+// Update the ApiError interface at the top of TestCasesPanel
+interface ApiError {
+    error?: string;
+    message: string;
+    details?: string;
+    suggestions?: string[];
+    supportedLanguages?: string[];
+    retryable?: boolean;
+    category?: string;
+    suggestion?: string;
+}
+
 interface ErrorDetails {
-    type: 'validation' | 'network' | 'parsing' | 'execution' | 'api' | 'timeout';
+    type: 'validation' | 'network' | 'parsing' | 'execution' | 'api' | 'timeout' | 'compilation' | 'function_not_found';
     title: string;
     description: string;
     suggestion?: string;
     retryable: boolean;
+    category?: string;
 }
+
+// Supported languages - updated to match the new endpoint
+const SUPPORTED_LANGUAGES = ['java', 'python', 'javascript', 'cpp', 'c', 'go'] as const;
+type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 
 export function TestCasesPanel({
     tab,
@@ -100,92 +127,115 @@ export function TestCasesPanel({
     const [pauseRequested, setPauseRequested] = useState(false);
     const [currentTestIndex, setCurrentTestIndex] = useState(0);
 
+    // New state for enhanced analytics
+    const [executionStats, setExecutionStats] = useState({
+        totalExecutionTime: 0,
+        averageExecutionTime: 0,
+        totalMemoryUsage: 0,
+        averageMemoryUsage: 0,
+        detectedAlgorithm: '',
+        dataStructures: [] as string[]
+    });
+
     // Scroll management refs
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const isUserScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastContentLengthRef = useRef(0);
 
-    // Enhanced error categorization
+    // Enhanced error categorization for new endpoint responses
     const categorizeError = useCallback((errorMessage: string, context: string = 'general'): ErrorDetails => {
         const message = errorMessage.toLowerCase();
 
-        if (message.includes('no function found') || message.includes('no_function_found')) {
+        if (message.includes('no function found') || message.includes('no_function_found') ||
+            message.includes('no valid function found') || message.includes('no callable function detected')) {
             return {
-                type: 'validation',
+                type: 'function_not_found',
                 title: 'No Function Detected',
                 description: 'The code does not contain a recognizable function that can be tested.',
-                suggestion: 'Ensure your code includes a complete function definition with proper syntax.',
-                retryable: true
+                suggestion: 'Ensure your code includes a complete function definition with proper syntax for the selected language.',
+                retryable: true,
+                category: 'Code Structure'
             };
         }
 
-        if (message.includes('insufficient_code') || message.includes('too short')) {
+        if (message.includes('unsupported language')) {
             return {
                 type: 'validation',
-                title: 'Incomplete Code',
-                description: 'The provided code is too short or incomplete for analysis.',
-                suggestion: 'Include a complete function implementation with proper structure.',
-                retryable: true
+                title: 'Unsupported Language',
+                description: 'The selected programming language is not supported.',
+                suggestion: `Please use one of the supported languages: ${SUPPORTED_LANGUAGES.join(', ')}.`,
+                retryable: false,
+                category: 'Language Support'
             };
         }
 
-        if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
+        if (message.includes('compilation error') || message.includes('syntax error') ||
+            message.includes('compile_output')) {
+            return {
+                type: 'compilation',
+                title: 'Compilation Error',
+                description: 'Your code has syntax or compilation errors that prevent execution.',
+                suggestion: 'Review your code syntax and fix any compilation errors before testing.',
+                retryable: false,
+                category: 'Code Quality'
+            };
+        }
+
+        if (message.includes('runtime error') || message.includes('execution failed') ||
+            message.includes('stderr')) {
+            return {
+                type: 'execution',
+                title: 'Runtime Error',
+                description: 'Your code compiled successfully but encountered a runtime error.',
+                suggestion: 'Check your logic for edge cases, null references, or array bounds issues.',
+                retryable: false,
+                category: 'Logic Error'
+            };
+        }
+
+        if (message.includes('timeout') || message.includes('time limit') || message.includes('timed out')) {
+            return {
+                type: 'timeout',
+                title: 'Execution Timeout',
+                description: 'Code execution took too long and was terminated.',
+                suggestion: 'Optimize your algorithm or reduce input complexity to improve performance.',
+                retryable: true,
+                category: 'Performance'
+            };
+        }
+
+        if (message.includes('network') || message.includes('fetch') || message.includes('connection') ||
+            message.includes('judge0 error')) {
             return {
                 type: 'network',
                 title: 'Network Error',
-                description: 'Unable to connect to the testing service.',
+                description: 'Unable to connect to the code execution service.',
                 suggestion: 'Check your internet connection and try again.',
-                retryable: true
+                retryable: true,
+                category: 'Infrastructure'
             };
         }
 
-        if (message.includes('timeout') || message.includes('time out')) {
-            return {
-                type: 'timeout',
-                title: 'Request Timeout',
-                description: 'The request took too long to complete.',
-                suggestion: 'Try again with simpler test cases or check your code complexity.',
-                retryable: true
-            };
-        }
-
-        if (message.includes('parse') || message.includes('json') || message.includes('invalid format')) {
-            return {
-                type: 'parsing',
-                title: 'Parsing Error',
-                description: 'Unable to parse the test case data or AI response.',
-                suggestion: 'Check your input format and ensure it follows JSON syntax.',
-                retryable: false
-            };
-        }
-
-        if (message.includes('api') || message.includes('service unavailable')) {
+        if (message.includes('system error') || message.includes('internal error') ||
+            message.includes('service unavailable')) {
             return {
                 type: 'api',
-                title: 'Service Unavailable',
-                description: 'The AI testing service is temporarily unavailable.',
+                title: 'Service Error',
+                description: 'The code execution service is temporarily unavailable.',
                 suggestion: 'Please try again in a few moments.',
-                retryable: true
-            };
-        }
-
-        if (message.includes('compilation') || message.includes('syntax')) {
-            return {
-                type: 'execution',
-                title: 'Code Compilation Error',
-                description: 'Your code has syntax or compilation errors.',
-                suggestion: 'Review your code syntax and fix any compilation errors.',
-                retryable: false
+                retryable: true,
+                category: 'System'
             };
         }
 
         return {
             type: 'execution',
             title: 'Execution Error',
-            description: errorMessage || 'An unexpected error occurred during execution.',
-            suggestion: 'Review your code and try again.',
-            retryable: true
+            description: errorMessage || 'An unexpected error occurred during code execution.',
+            suggestion: 'Review your code and test inputs, then try again.',
+            retryable: true,
+            category: 'General'
         };
     }, []);
 
@@ -260,8 +310,6 @@ export function TestCasesPanel({
             return cases;
         } catch (parseError) {
             console.error("Error parsing test cases:", parseError);
-            const errorDetails = categorizeError('Failed to parse AI response', 'parsing');
-            setApiError(errorDetails);
             return cases;
         }
     }, [categorizeError]);
@@ -276,14 +324,13 @@ export function TestCasesPanel({
                 toast.success(`Generated ${parsed.length} test cases successfully`, {
                     description: `Ready to run ${parsed.length} test case${parsed.length > 1 ? 's' : ''}`
                 });
-            } else if (!apiError) {
-                const errorDetails = categorizeError('No valid test cases found in AI response', 'parsing');
-                setApiError(errorDetails);
+            } else {
+                setApiError(null);
             }
         }
-    }, [latestTests, isGeneratingTests, parseTestCases, apiError]);
+    }, [latestTests, isGeneratingTests, parseTestCases]);
 
-    // Handle external errors - Updated to use the same format as AnalysisPanel
+    // Handle external errors
     useEffect(() => {
         if (error) {
             setApiError({
@@ -291,7 +338,8 @@ export function TestCasesPanel({
                 title: 'Test Generation Failed',
                 description: error.message,
                 suggestion: error.suggestion,
-                retryable: true
+                retryable: true,
+                category: error.category || 'General'
             });
         } else {
             if (apiError?.type === 'network' || apiError?.type === 'api') {
@@ -332,10 +380,37 @@ export function TestCasesPanel({
         }
     }, [isGeneratingTests]);
 
-    // Enhanced run single test with better error handling
+    // Update execution stats
+    const updateExecutionStats = useCallback((testCases: TestCase[]) => {
+        const completedTests = testCases.filter(tc => tc.executionTime !== undefined);
+        const totalExecTime = completedTests.reduce((sum, tc) => sum + (tc.executionTime || 0), 0);
+        const totalMemory = completedTests.reduce((sum, tc) => sum + (tc.memoryUsage || 0), 0);
+
+        // Get unique algorithm patterns and data structures
+        const algorithms = [...new Set(completedTests.map(tc => tc.algorithmPattern).filter(Boolean))];
+        const dataStructures = [...new Set(completedTests.flatMap(tc => tc.dataStructuresUsed || []))];
+
+        setExecutionStats({
+            totalExecutionTime: totalExecTime,
+            averageExecutionTime: completedTests.length > 0 ? totalExecTime / completedTests.length : 0,
+            totalMemoryUsage: totalMemory,
+            averageMemoryUsage: completedTests.length > 0 ? totalMemory / completedTests.length : 0,
+            detectedAlgorithm: algorithms[0] || '',
+            dataStructures: dataStructures
+        });
+    }, []);
+
+    // Enhanced run single test with new endpoint structure
     const runTest = useCallback(async (testCase: TestCase) => {
         if (!tab?.code) {
             const errorDetails = categorizeError('No code available to test', 'validation');
+            setApiError(errorDetails);
+            return;
+        }
+
+        // Check if language is supported
+        if (!SUPPORTED_LANGUAGES.includes(tab.language as SupportedLanguage)) {
+            const errorDetails = categorizeError(`Unsupported language: ${tab.language}`, 'validation');
             setApiError(errorDetails);
             return;
         }
@@ -349,15 +424,17 @@ export function TestCasesPanel({
 
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000);
+            const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased timeout for complex operations
 
             const res = await fetch("/api/ai-execute", {
                 method: "POST",
                 body: JSON.stringify({
                     code: tab.code,
                     language: tab.language,
-                    input: testCase.input,
-                    expectedOutput: testCase.output
+                    testCase: {
+                        input: testCase.input,
+                        output: testCase.output
+                    }
                 }),
                 headers: { "Content-Type": "application/json" },
                 signal: controller.signal
@@ -366,12 +443,24 @@ export function TestCasesPanel({
             clearTimeout(timeoutId);
 
             if (!res.ok) {
-                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+                const errorText = await res.text();
+                let errorMessage = `HTTP ${res.status}: ${res.statusText}`;
+
+                try {
+                    const errorData = JSON.parse(errorText);
+                    errorMessage = errorData.error || errorMessage;
+                } catch {
+                    // Use the raw error text if JSON parsing fails
+                    if (errorText) errorMessage = errorText;
+                }
+
+                throw new Error(errorMessage);
             }
 
             const data = await res.json();
             const executionTime = Date.now() - startTime;
 
+            // Enhanced test case update with new fields
             setTestCases(prev => prev.map(tc =>
                 tc.id === testCase.id ? {
                     ...tc,
@@ -379,7 +468,12 @@ export function TestCasesPanel({
                     actualOutput: data.actualOutput,
                     error: data.error || null,
                     explanation: data.explanation || "",
-                    executionTime
+                    executionTime: data.executionTime || executionTime,
+                    memoryUsage: data.memoryUsage,
+                    functionTested: data.functionTested,
+                    algorithmPattern: data.algorithmPattern,
+                    dataStructuresUsed: data.dataStructuresUsed,
+                    processingTime: data.processingTime
                 } : tc
             ));
 
@@ -390,7 +484,7 @@ export function TestCasesPanel({
                 });
             } else {
                 toast.success(`Test ${testCase.id.replace(/.*-/, '')} passed`, {
-                    description: `Completed in ${executionTime}ms`
+                    description: `Completed in ${data.executionTime || executionTime}ms${data.memoryUsage ? ` • ${data.memoryUsage}KB memory` : ''}`
                 });
             }
 
@@ -399,7 +493,7 @@ export function TestCasesPanel({
 
             let errorMessage = 'Execution failed';
             if (error.name === 'AbortError') {
-                errorMessage = 'Test execution timed out';
+                errorMessage = 'Test execution timed out (45s limit exceeded)';
             } else if (error.message) {
                 errorMessage = error.message;
             }
@@ -422,8 +516,10 @@ export function TestCasesPanel({
             });
         } finally {
             setRunningTestId(null);
+            // Update stats after each test
+            updateExecutionStats(testCases);
         }
-    }, [tab, categorizeError]);
+    }, [tab, categorizeError, testCases, updateExecutionStats]);
 
     // Enhanced run all tests with pause/resume capability
     const runAllTests = useCallback(async () => {
@@ -454,7 +550,7 @@ export function TestCasesPanel({
             setProgress(((i + 1) / testCases.length) * 100);
 
             if (i < testCases.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 800)); // Slightly longer delay for better UX
             }
         }
 
@@ -465,15 +561,15 @@ export function TestCasesPanel({
             const totalRun = passedCount + failedCount;
             if (passedCount === totalRun && totalRun > 0) {
                 toast.success(`All ${totalRun} tests passed! 🎉`, {
-                    description: 'Your solution works correctly for all test cases'
+                    description: `Function: ${executionStats.detectedAlgorithm || 'Unknown'} • Avg: ${Math.round(executionStats.averageExecutionTime)}ms`
                 });
             } else if (failedCount > 0) {
                 toast.error(`${failedCount} of ${totalRun} tests failed`, {
-                    description: 'Check the failed tests for more details'
+                    description: 'Check the failed tests for detailed analysis'
                 });
             }
         }
-    }, [testCases, runTest, pauseRequested]);
+    }, [testCases, runTest, pauseRequested, executionStats]);
 
     // Pause test execution
     const pauseTests = useCallback(() => {
@@ -548,6 +644,9 @@ export function TestCasesPanel({
 
         const isCustom = testCase?.isCustom;
         toast.success(`${isCustom ? 'Custom' : 'Generated'} test case removed`);
+
+        // Update stats after removal
+        updateExecutionStats(testCases.filter(tc => tc.id !== id));
     };
 
     // Copy test case data
@@ -556,7 +655,10 @@ export function TestCasesPanel({
             input: testCase.input,
             output: testCase.output,
             ...(testCase.actualOutput && { actualOutput: testCase.actualOutput }),
-            ...(testCase.error && { error: testCase.error })
+            ...(testCase.error && { error: testCase.error }),
+            ...(testCase.functionTested && { functionTested: testCase.functionTested }),
+            ...(testCase.algorithmPattern && { algorithmPattern: testCase.algorithmPattern }),
+            ...(testCase.dataStructuresUsed && { dataStructuresUsed: testCase.dataStructuresUsed })
         };
 
         navigator.clipboard.writeText(JSON.stringify(data, null, 2));
@@ -588,7 +690,7 @@ export function TestCasesPanel({
         return input.map(param => formatValue(param)).join(', ');
     };
 
-    // Enhanced status display using only shadcn colors
+    // Enhanced status display with new categories
     const getStatusDisplay = (testCase: TestCase) => {
         switch (testCase.status) {
             case 'running':
@@ -599,15 +701,15 @@ export function TestCasesPanel({
                 };
             case 'passed':
                 return {
-                    icon: <CheckCircle2 className="w-4 h-4" />,
-                    badge: <Badge variant="secondary">Passed</Badge>,
-                    color: 'border-border bg-muted/30'
+                    icon: <CheckCircle2 className="w-4 h-4 text-green-600" />,
+                    badge: <Badge className="bg-green-600 text-white">Passed</Badge>,
+                    color: 'border-green-600/30 bg-green-50 dark:bg-green-900/20'
                 };
             case 'failed':
                 return {
-                    icon: <XCircle className="w-4 h-4" />,
-                    badge: <Badge variant="outline">Failed</Badge>,
-                    color: 'border-muted-foreground/30 bg-muted/20'
+                    icon: <XCircle className="w-4 h-4 text-red-600" />,
+                    badge: <Badge className="bg-red-600 text-white">Failed</Badge>,
+                    color: 'border-red-600/30 bg-red-50 dark:bg-red-900/20'
                 };
             case 'skipped':
                 return {
@@ -621,6 +723,24 @@ export function TestCasesPanel({
                     badge: <Badge variant="outline">Pending</Badge>,
                     color: 'border-border'
                 };
+        }
+    };
+
+    // Get algorithm pattern icon
+    const getAlgorithmIcon = (pattern: string) => {
+        switch (pattern?.toLowerCase()) {
+            case 'linked_list':
+                return <Layers className="w-4 h-4" />;
+            case 'binary_tree':
+                return <Network className="w-4 h-4" />;
+            case 'dynamic_programming':
+                return <Brain className="w-4 h-4" />;
+            case 'two_sum':
+                return <Target className="w-4 h-4" />;
+            case 'binary_search':
+                return <Eye className="w-4 h-4" />;
+            default:
+                return <Code className="w-4 h-4" />;
         }
     };
 
@@ -651,7 +771,7 @@ export function TestCasesPanel({
                     onScroll={handleScroll}
                 >
                     <div className="p-4 space-y-4 max-w-full">
-                        {/* Enhanced Header with improved spacing and hierarchy */}
+                        {/* Enhanced Header with language support indicator */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <div className="p-2.5 rounded-xl bg-muted border shadow-sm">
@@ -659,7 +779,7 @@ export function TestCasesPanel({
                                 </div>
                                 <div>
                                     <h2 className="text-lg font-semibold tracking-tight">AI Test Runner</h2>
-                                    <p className="text-sm text-muted-foreground">Intelligent code testing with analysis</p>
+                                    <p className="text-sm text-muted-foreground">Multi-language code testing with analysis</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -667,6 +787,12 @@ export function TestCasesPanel({
                                     <Code className="w-3 h-3 mr-1" />
                                     {tab?.language?.toUpperCase() || 'CODE'}
                                 </Badge>
+                                {SUPPORTED_LANGUAGES.includes(tab?.language as SupportedLanguage) && (
+                                    <Badge variant="secondary" className="text-xs">
+                                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                                        Supported
+                                    </Badge>
+                                )}
                                 {totalTests > 0 && (
                                     <Badge variant="secondary" className="text-xs">
                                         <Activity className="w-3 h-3 mr-1" />
@@ -676,21 +802,21 @@ export function TestCasesPanel({
                             </div>
                         </div>
 
-                        {/* Enhanced Error Display - Updated to match AnalysisPanel styling */}
-                        {(error || apiError) && (
+                        {/* Enhanced Error Display */}
+                        {!(isGeneratingTests) && (error || apiError) && (
                             <Card className="border-red-500 bg-red-50 dark:bg-red-900/20">
                                 <CardContent className="p-4">
                                     <div className="flex items-start gap-3">
                                         <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="font-medium text-red-800 dark:text-red-300 mb-1">Test Generation Failed</h3>
+                                            <h3 className="font-medium text-red-800 dark:text-red-300 mb-1">
+                                                {apiError?.title || 'Test Execution Failed'}
+                                            </h3>
 
-                                            {/* User-friendly error message */}
                                             <p className="text-sm text-red-700 dark:text-red-200 mb-2 break-words">
-                                                {apiError?.description || error?.message || 'An unexpected error occurred during test generation'}
+                                                {apiError?.description || error?.message || 'An unexpected error occurred during test execution'}
                                             </p>
 
-                                            {/* Show suggestion if available */}
                                             {(apiError?.suggestion || error?.suggestion) && (
                                                 <div className="mb-3 p-2 bg-red-100 dark:bg-red-800/30 rounded border border-red-200 dark:border-red-700">
                                                     <p className="text-xs text-red-800 dark:text-red-200">
@@ -699,7 +825,6 @@ export function TestCasesPanel({
                                                 </div>
                                             )}
 
-                                            {/* Show category if available */}
                                             {(apiError?.category || error?.category) && (
                                                 <div className="mb-3">
                                                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-200">
@@ -709,16 +834,18 @@ export function TestCasesPanel({
                                             )}
 
                                             <div className="flex gap-2">
-                                                <Button
-                                                    onClick={handleRetry}
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-8 text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
-                                                    disabled={isGeneratingTests}
-                                                >
-                                                    <RotateCcw className="w-3 h-3 mr-1" />
-                                                    {isGeneratingTests ? 'Retrying...' : 'Retry Generation'}
-                                                </Button>
+                                                {apiError?.retryable !== false && (
+                                                    <Button
+                                                        onClick={handleRetry}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 text-xs bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700"
+                                                        disabled={isGeneratingTests}
+                                                    >
+                                                        <RotateCcw className="w-3 h-3 mr-1" />
+                                                        {isGeneratingTests ? 'Retrying...' : 'Retry'}
+                                                    </Button>
+                                                )}
                                                 <Button
                                                     onClick={handleClearError}
                                                     variant="outline"
@@ -736,7 +863,7 @@ export function TestCasesPanel({
 
                         {!error && !apiError && (
                             <>
-                                {/* Enhanced Stats Dashboard with better visual hierarchy */}
+                                {/* Enhanced Stats Dashboard with algorithm detection */}
                                 {totalTests > 0 && (
                                     <Card className="border-2 shadow-sm">
                                         <CardContent className="p-5">
@@ -746,11 +873,11 @@ export function TestCasesPanel({
                                                     <div className="text-xs text-muted-foreground font-medium">Total</div>
                                                 </div>
                                                 <div className="text-center p-3 rounded-lg bg-background border-2 shadow-sm">
-                                                    <div className="text-2xl font-bold">{passedTests}</div>
+                                                    <div className="text-2xl font-bold text-green-600">{passedTests}</div>
                                                     <div className="text-xs text-muted-foreground font-medium">Passed</div>
                                                 </div>
                                                 <div className="text-center p-3 rounded-lg bg-muted/30 border">
-                                                    <div className="text-2xl font-bold">{failedTests}</div>
+                                                    <div className="text-2xl font-bold text-red-600">{failedTests}</div>
                                                     <div className="text-xs text-muted-foreground font-medium">Failed</div>
                                                 </div>
                                                 <div className="text-center p-3 rounded-lg bg-background border shadow-sm">
@@ -758,6 +885,40 @@ export function TestCasesPanel({
                                                     <div className="text-xs text-muted-foreground font-medium">Success</div>
                                                 </div>
                                             </div>
+
+                                            {/* Enhanced analytics */}
+                                            {executionStats.detectedAlgorithm && (
+                                                <div className="mb-4 p-3 bg-muted/30 rounded-lg border">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        {getAlgorithmIcon(executionStats.detectedAlgorithm)}
+                                                        <span className="text-sm font-medium">Detected Pattern</span>
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {executionStats.detectedAlgorithm.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                        {executionStats.dataStructures.length > 0 && (
+                                                            <span className="ml-2">
+                                                                • Uses: {executionStats.dataStructures.join(', ')}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Performance metrics */}
+                                            {executionStats.averageExecutionTime > 0 && (
+                                                <div className="grid grid-cols-2 gap-3 mb-4">
+                                                    <div className="text-center p-2 rounded-lg bg-background border">
+                                                        <div className="text-lg font-bold">{Math.round(executionStats.averageExecutionTime)}ms</div>
+                                                        <div className="text-xs text-muted-foreground">Avg Time</div>
+                                                    </div>
+                                                    {executionStats.averageMemoryUsage > 0 && (
+                                                        <div className="text-center p-2 rounded-lg bg-background border">
+                                                            <div className="text-lg font-bold">{Math.round(executionStats.averageMemoryUsage)}KB</div>
+                                                            <div className="text-xs text-muted-foreground">Avg Memory</div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
 
                                             <div className="space-y-3">
                                                 <div className="flex justify-between items-center text-sm">
@@ -773,23 +934,26 @@ export function TestCasesPanel({
                                             {passedTests === totalTests && totalTests > 0 && (
                                                 <div className="mt-4 p-4 bg-muted/30 rounded-lg border-2 border-dashed">
                                                     <div className="flex items-center gap-2">
-                                                        <CheckCircle2 className="w-5 h-5" />
+                                                        <CheckCircle2 className="w-5 h-5 text-green-600" />
                                                         <span className="text-sm font-semibold">All tests passed! 🎉</span>
                                                     </div>
                                                     <p className="text-xs text-muted-foreground mt-2">
                                                         Your solution works correctly for all test cases
+                                                        {executionStats.averageExecutionTime > 0 &&
+                                                            ` with an average execution time of ${Math.round(executionStats.averageExecutionTime)}ms`
+                                                        }
                                                     </p>
                                                 </div>
                                             )}
 
                                             {failedTests > 0 && (
-                                                <div className="mt-4 p-4 bg-muted/20 rounded-lg border">
+                                                <div className="mt-4 p-4 rounded-lg border border-red-600/30 bg-red-50 dark:bg-red-900/20">
                                                     <div className="flex items-center gap-2">
-                                                        <XCircle className="w-5 h-5" />
+                                                        <XCircle className="w-5 h-5 text-red-600" />
                                                         <span className="text-sm font-semibold">{failedTests} test{failedTests > 1 ? 's' : ''} failed</span>
                                                     </div>
                                                     <p className="text-xs text-muted-foreground mt-2">
-                                                        Review the failed tests below for detailed analysis
+                                                        Review the failed tests below for detailed analysis and error information
                                                     </p>
                                                 </div>
                                             )}
@@ -797,7 +961,7 @@ export function TestCasesPanel({
                                     </Card>
                                 )}
 
-                                {/* Enhanced Action Controls with better grouping */}
+                                {/* Enhanced Action Controls */}
                                 <Card className="shadow-sm">
                                     <CardContent className="p-4">
                                         <div className="flex flex-wrap gap-2">
@@ -815,7 +979,7 @@ export function TestCasesPanel({
                                                 <>
                                                     <Button
                                                         onClick={runningTests ? pauseTests : runAllTests}
-                                                        disabled={isGeneratingTests}
+                                                        disabled={isGeneratingTests || !SUPPORTED_LANGUAGES.includes(tab?.language as SupportedLanguage)}
                                                         size="sm"
                                                         className="h-9 shadow-sm"
                                                     >
@@ -887,6 +1051,22 @@ export function TestCasesPanel({
                                                 </>
                                             )}
                                         </div>
+
+                                        {/* Language support warning */}
+                                        {!SUPPORTED_LANGUAGES.includes(tab?.language as SupportedLanguage) && (
+                                            <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                                                <div className="flex items-center gap-2">
+                                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                                    <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                                        Language Not Supported
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                                                    {tab?.language ? `${tab.language} is not supported yet. ` : ''}
+                                                    Supported languages: {SUPPORTED_LANGUAGES.join(', ')}
+                                                </p>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
 
@@ -922,7 +1102,7 @@ export function TestCasesPanel({
                                     </Card>
                                 )}
 
-                                {/* Enhanced Test Cases Display with improved visual hierarchy */}
+                                {/* Enhanced Test Cases Display with algorithm info */}
                                 {!isGeneratingTests && (
                                     <div className="space-y-3">
                                         {testCases.map((testCase, index) => {
@@ -952,12 +1132,26 @@ export function TestCasesPanel({
                                                                                         Custom
                                                                                     </Badge>
                                                                                 )}
+                                                                                {testCase.algorithmPattern && (
+                                                                                    <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                                                                                        {getAlgorithmIcon(testCase.algorithmPattern)}
+                                                                                        <span className="ml-1">
+                                                                                            {testCase.algorithmPattern.replace(/_/g, ' ')}
+                                                                                        </span>
+                                                                                    </Badge>
+                                                                                )}
                                                                             </CardTitle>
                                                                             <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
                                                                                 {testCase.executionTime && (
                                                                                     <span className="flex items-center gap-1 font-mono">
                                                                                         <Timer className="w-3 h-3" />
                                                                                         {testCase.executionTime}ms
+                                                                                    </span>
+                                                                                )}
+                                                                                {testCase.memoryUsage && (
+                                                                                    <span className="flex items-center gap-1 font-mono">
+                                                                                        <Database className="w-3 h-3" />
+                                                                                        {testCase.memoryUsage}KB
                                                                                     </span>
                                                                                 )}
                                                                                 <span className="truncate max-w-[250px] font-mono">
@@ -985,7 +1179,7 @@ export function TestCasesPanel({
                                                                 <Separator className="mb-5" />
 
                                                                 <div className="space-y-5">
-                                                                    {/* Enhanced Input/Output Display with better spacing */}
+                                                                    {/* Enhanced Input/Output Display */}
                                                                     <div className="space-y-4">
                                                                         <div className="space-y-2">
                                                                             <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
@@ -1019,8 +1213,8 @@ export function TestCasesPanel({
                                                                                         Actual Output
                                                                                     </Label>
                                                                                     <div className={`p-4 rounded-lg border-2 shadow-inner ${testCase.status === 'passed'
-                                                                                        ? 'bg-background border-border'
-                                                                                        : 'bg-muted/30 border-muted-foreground/30'
+                                                                                        ? 'bg-green-50 dark:bg-green-900/20 border-green-600/30'
+                                                                                        : 'bg-red-50 dark:bg-red-900/20 border-red-600/30'
                                                                                         }`}>
                                                                                         <pre className="text-sm font-mono whitespace-pre-wrap break-all leading-relaxed">
                                                                                             {formatValue(testCase.actualOutput)}
@@ -1030,6 +1224,30 @@ export function TestCasesPanel({
                                                                             )}
                                                                         </div>
                                                                     </div>
+
+                                                                    {/* Enhanced Function Analysis */}
+                                                                    {testCase.functionTested && (
+                                                                        <div className="space-y-2">
+                                                                            <Label className="text-sm font-semibold flex items-center gap-2">
+                                                                                <Code className="w-4 h-4" />
+                                                                                Function Analysis
+                                                                            </Label>
+                                                                            <div className="p-4 bg-background border-2 border-dashed rounded-lg shadow-inner">
+                                                                                <div className="text-sm space-y-2">
+                                                                                    <p><strong>Function:</strong> {testCase.functionTested}</p>
+                                                                                    {testCase.algorithmPattern && (
+                                                                                        <p><strong>Pattern:</strong> {testCase.algorithmPattern.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
+                                                                                    )}
+                                                                                    {testCase.dataStructuresUsed && testCase.dataStructuresUsed.length > 0 && (
+                                                                                        <p><strong>Data Structures:</strong> {testCase.dataStructuresUsed.join(', ')}</p>
+                                                                                    )}
+                                                                                    {testCase.processingTime && (
+                                                                                        <p><strong>Processing Time:</strong> {testCase.processingTime}ms</p>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
 
                                                                     {/* Enhanced Error Display */}
                                                                     {testCase.error && (
@@ -1065,7 +1283,7 @@ export function TestCasesPanel({
                                                                     <div className="flex items-center gap-3 pt-3 border-t">
                                                                         <Button
                                                                             onClick={() => runTest(testCase)}
-                                                                            disabled={testCase.status === 'running' || runningTests}
+                                                                            disabled={testCase.status === 'running' || runningTests || !SUPPORTED_LANGUAGES.includes(tab?.language as SupportedLanguage)}
                                                                             variant="outline"
                                                                             size="sm"
                                                                             className="h-8 shadow-sm"
@@ -1142,7 +1360,7 @@ export function TestCasesPanel({
                                             </div>
                                             <h3 className="text-lg font-semibold mb-3">No Test Cases</h3>
                                             <p className="text-sm text-muted-foreground mb-8 max-w-sm mx-auto leading-relaxed">
-                                                Create custom test cases or let AI generate them based on your code to get started.
+                                                Create custom test cases or let AI generate them based on your {tab?.language || 'code'} to get started.
                                             </p>
                                             <div className="flex gap-4 justify-center">
                                                 <Button onClick={() => setShowAddDialog(true)} className="shadow-sm">
@@ -1153,7 +1371,7 @@ export function TestCasesPanel({
                                                     onClick={handleRetry}
                                                     variant="outline"
                                                     className="shadow-sm"
-                                                    disabled={isGeneratingTests}
+                                                    disabled={isGeneratingTests || !SUPPORTED_LANGUAGES.includes(tab?.language as SupportedLanguage)}
                                                 >
                                                     {isGeneratingTests ? (
                                                         <>
@@ -1181,7 +1399,7 @@ export function TestCasesPanel({
                                             </div>
                                             <h3 className="text-lg font-semibold mb-3">Generating Test Cases</h3>
                                             <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-                                                AI is analyzing your code and creating appropriate test cases...
+                                                AI is analyzing your {tab?.language || 'code'} and creating appropriate test cases...
                                             </p>
                                             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                                                 <div className="w-2 h-2 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -1196,7 +1414,7 @@ export function TestCasesPanel({
                     </div>
                 </div>
 
-                {/* Enhanced Add Test Dialog */}
+                {/* Enhanced Add Test Dialog with language-specific examples */}
                 <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                     <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
@@ -1205,6 +1423,11 @@ export function TestCasesPanel({
                                     <Plus className="w-5 h-5" />
                                 </div>
                                 Add Custom Test Case
+                                {tab?.language && (
+                                    <Badge variant="outline" className="text-xs">
+                                        {tab.language}
+                                    </Badge>
+                                )}
                             </DialogTitle>
                         </DialogHeader>
 
@@ -1231,7 +1454,7 @@ export function TestCasesPanel({
                                             id="simple-input"
                                             value={newTestInput}
                                             onChange={(e) => setNewTestInput(e.target.value)}
-                                            placeholder='Example: [2,7,11,15], 9'
+                                            placeholder={`Example: [2,7,11,15], 9`}
                                             className="font-mono h-12 shadow-sm"
                                         />
                                         <p className="text-xs text-muted-foreground leading-relaxed">
@@ -1247,7 +1470,7 @@ export function TestCasesPanel({
                                             id="simple-output"
                                             value={newTestOutput}
                                             onChange={(e) => setNewTestOutput(e.target.value)}
-                                            placeholder='Example: [0,1]'
+                                            placeholder={`Example: [0,1]`}
                                             className="font-mono h-12 shadow-sm"
                                         />
                                         <p className="text-xs text-muted-foreground leading-relaxed">
@@ -1269,7 +1492,7 @@ export function TestCasesPanel({
                                             value={newTestInput}
                                             onChange={(e) => setNewTestInput(e.target.value)}
                                             placeholder='[[2, 7, 11, 15], 9]'
-                                            className="font-mono h-12 resize-none shadow-sm"
+                                            className="font-mono h-16 resize-none shadow-sm"
                                         />
                                         <p className="text-xs text-muted-foreground leading-relaxed">
                                             Each function parameter should be an element in the JSON array. Complex data structures are supported.
@@ -1285,7 +1508,7 @@ export function TestCasesPanel({
                                             value={newTestOutput}
                                             onChange={(e) => setNewTestOutput(e.target.value)}
                                             placeholder='[0, 1]'
-                                            className="font-mono h-12 resize-none shadow-sm"
+                                            className="font-mono h-16 resize-none shadow-sm"
                                         />
                                         <p className="text-xs text-muted-foreground leading-relaxed">
                                             The expected return value in JSON format. Supports all data types including nested objects and arrays.

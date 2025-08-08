@@ -15,99 +15,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ContextMenuSeparator } from "@radix-ui/react-context-menu";
 
-// Enhanced error parsing utility
+// Simplified error parser
 function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
-    console.log('Raw error received:', error);
-
-    // Handle different error types more robustly
-    if (!error) {
-        return { message: 'An unexpected error occurred' };
-    }
-
-    // If it's already a properly formatted error object
-    if (error && typeof error === 'object' && !error.message && error.error) {
-        return {
-            message: error.error,
-            suggestion: error.suggestion,
-            category: error.category
-        };
-    }
-
-    // If it's already a properly formatted error object with message
-    if (error && typeof error === 'object' && error.message && !error.message.startsWith('{')) {
-        return {
-            message: error.message,
-            suggestion: error.suggestion,
-            category: error.category
-        };
-    }
-
-    // Handle Error objects with JSON in message
-    if (error instanceof Error) {
-        try {
-            // Try to parse the message as JSON
-            const parsed = JSON.parse(error.message);
-            if (parsed && typeof parsed === 'object') {
-                return {
-                    message: parsed.error || parsed.message || error.message,
-                    suggestion: parsed.suggestion,
-                    category: parsed.category
-                };
-            }
-        } catch {
-            // If JSON parsing fails, use the message as-is
-            return { message: error.message };
-        }
-    }
-
-    // Handle string that might be JSON
-    if (typeof error === 'string') {
-        // Check if it looks like JSON
-        if (error.trim().startsWith('{') && error.trim().endsWith('}')) {
-            try {
-                const parsed = JSON.parse(error);
-                return {
-                    message: parsed.error || parsed.message || 'An error occurred',
-                    suggestion: parsed.suggestion,
-                    category: parsed.category
-                };
-            } catch {
-                return { message: error };
-            }
-        }
-        return { message: error };
-    }
-
-    // Handle object with nested error info
+    // console.log("error", error);
+    if (!error) return { message: 'An unexpected error occurred' };
+    if (typeof error === 'string') return { message: error };
+    if (error instanceof Error) return { message: error.message };
     if (typeof error === 'object') {
-        // Check for nested error structures
-        if (error.message && typeof error.message === 'string') {
-            if (error.message.startsWith('{')) {
-                try {
-                    const parsed = JSON.parse(error.message);
-                    return {
-                        message: parsed.error || parsed.message || 'An error occurred',
-                        suggestion: parsed.suggestion,
-                        category: parsed.category
-                    };
-                } catch {
-                    return { message: error.message };
-                }
-            }
-            return { message: error.message };
-        }
-
-        // Direct object properties
-        if (error.error || error.message) {
-            return {
-                message: error.error || error.message,
-                suggestion: error.suggestion,
-                category: error.category
-            };
-        }
+        // console.log("Test")
+        // console.log("error", error);
+        const msg = error.message || error.error || 'An unexpected error occurred';
+        return { message: msg, suggestion: error.suggestion, category: error.category };
     }
-
     return { message: 'An unexpected error occurred' };
 }
 
@@ -117,40 +38,42 @@ export default function SidePanel() {
     const [output, setOutput] = useState("");
     const [activePanel, setActivePanel] = useState<string | null>(null);
     const [hoveredAction, setHoveredAction] = useState<string | null>(null);
-
-    // Enhanced error states with better initialization
     const [analysisError, setAnalysisError] = useState<{ message: string; suggestion?: string; category?: string } | null>(null);
     const [testError, setTestError] = useState<{ message: string; suggestion?: string; category?: string } | null>(null);
 
     var tab: Tab | undefined = tabs.find((item) => item.id == activeTabId);
 
-    // Enhanced chat hooks with comprehensive error handling
+    // Chat hooks with simple error handling
     const {
-        messages, append, stop, reload, status, error: rawAnalysisError, setMessages
+        messages, append, isLoading: analysisLoading, stop, status, setMessages
     } = useChat({
         api: '/api/analyze',
-        onError: (error) => {
-            console.error('Analysis error caught:', error);
-            const parsedError = parseApiError(error);
-            console.log('Parsed analysis error:', parsedError);
-            setAnalysisError(parsedError);
+        onError: async (error) => {
+            const errorContent = JSON.parse(error.message);
+            setAnalysisError({
+                message: errorContent.error || "An unexpected error occurred",
+                suggestion: errorContent.suggestion || "Please try again",
+                category: errorContent.category || "error"
+            });
         },
         onFinish: (message) => {
-            console.log('Analysis completed:', message);
-            setAnalysisError(null); // Clear error on success
+            setAnalysisError(null);
         }
     });
 
     const {
         messages: testMessages, append: appendTest, stop: stopTest,
-        reload: reloadTest, status: testStatus, error: rawTestError, setMessages: setTestMessages
+        reload: reloadTest, status: testStatus, setMessages: setTestMessages, isLoading: testsLoading
     } = useChat({
         api: '/api/generate-tests',
         onError: (error) => {
-            console.error('Test generation error caught:', error);
-            const parsedError = parseApiError(error);
-            console.log('Parsed test error:', parsedError);
-            setTestError(parsedError);
+            const errorContent = JSON.parse(error.message);
+            console.log("errorContent", errorContent)
+            setTestError({
+                message: errorContent.message || "An unexpected error occurred",
+                suggestion: errorContent.details || "Please try again",
+                category: errorContent.category || "error"
+            });
         },
         onFinish: (message) => {
             console.log('Test generation completed:', message);
@@ -160,27 +83,10 @@ export default function SidePanel() {
 
     const latestAnalysis = messages.filter(m => m.role === 'assistant').pop();
     const latestTests = testMessages.filter(m => m.role === 'assistant').pop();
-    const isAnalyzing = status === 'loading';
-    const isGeneratingTests = testStatus === 'loading';
+    const isAnalyzing = analysisLoading || ['loading', 'streaming', 'submitted', 'in_progress'].includes(status as any);
+    const isGeneratingTests = testsLoading || ['loading', 'streaming', 'submitted', 'in_progress'].includes(testStatus as any);
 
-    // Enhanced error parsing when raw errors change
-    useEffect(() => {
-        if (rawAnalysisError) {
-            console.log('Raw analysis error changed:', rawAnalysisError);
-            const parsedError = parseApiError(rawAnalysisError);
-            console.log('Setting parsed analysis error:', parsedError);
-            setAnalysisError(parsedError);
-        }
-    }, [rawAnalysisError]);
 
-    useEffect(() => {
-        if (rawTestError) {
-            console.log('Raw test error changed:', rawTestError);
-            const parsedError = parseApiError(rawTestError);
-            console.log('Setting parsed test error:', parsedError);
-            setTestError(parsedError);
-        }
-    }, [rawTestError]);
 
     // Action handlers with better error management
     async function handleAnalyze() {
@@ -189,7 +95,6 @@ export default function SidePanel() {
             return;
         }
 
-        console.log('Starting analysis...');
         setAnalysisError(null); // Clear any previous errors
 
         const { code, language } = tab;
@@ -207,16 +112,10 @@ export default function SidePanel() {
             return;
         }
 
-        try {
-            await append({
-                role: "user",
-                content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-            }, { body: { code, language, type: "comprehensive" } });
-        } catch (error) {
-            console.error('Error during analysis append:', error);
-            const parsedError = parseApiError(error);
-            setAnalysisError(parsedError);
-        }
+        await append({
+            role: "user",
+            content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+        }, { body: { code, language, type: "comprehensive" } });
     }
 
     async function handleGenerateTests() {
@@ -225,14 +124,12 @@ export default function SidePanel() {
             return;
         }
 
-        console.log('Starting test generation...');
         setTestError(null); // Clear any previous errors
 
         const { code, language } = tab;
         setActivePanel("testcases");
         setTestMessages([]);
 
-        // Client-side validation
         if (!code || code.trim().length < 10) {
             const validationError = {
                 message: "Code is too short to generate tests",
@@ -243,16 +140,11 @@ export default function SidePanel() {
             return;
         }
 
-        try {
-            await appendTest({
-                role: "user",
-                content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-            }, { body: { code, language, type: "testcases" } });
-        } catch (error) {
-            console.error('Error during test generation append:', error);
-            const parsedError = parseApiError(error);
-            setTestError(parsedError);
-        }
+        await appendTest({
+            role: "user",
+            content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+        }, { body: { code, language, type: "testcases" } });
+
     }
 
     async function handleRun() {
@@ -340,7 +232,6 @@ export default function SidePanel() {
             return;
         }
 
-        console.log('Reloading analysis...');
         setAnalysisError(null); // Clear previous errors
 
         const { code, language } = tab;
@@ -356,17 +247,12 @@ export default function SidePanel() {
             return;
         }
 
-        try {
-            setMessages([]);
-            await append({
-                role: "user",
-                content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-            }, { body: { code, language, type: "comprehensive" } });
-        } catch (error) {
-            console.error('Error during analysis reload:', error);
-            const parsedError = parseApiError(error);
-            setAnalysisError(parsedError);
-        }
+        setMessages([]);
+        await append({
+            role: "user",
+            content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+        }, { body: { code, language, type: "comprehensive" } });
+
     };
 
     const handleReloadTests = async () => {
@@ -375,7 +261,6 @@ export default function SidePanel() {
             return;
         }
 
-        console.log('Reloading tests...');
         setTestError(null); // Clear previous errors
 
         const { code, language } = tab;
@@ -391,17 +276,11 @@ export default function SidePanel() {
             return;
         }
 
-        try {
-            setTestMessages([]);
-            await appendTest({
-                role: "user",
-                content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-            }, { body: { code, language, type: "testcases" } });
-        } catch (error) {
-            console.error('Error during test reload:', error);
-            const parsedError = parseApiError(error);
-            setTestError(parsedError);
-        }
+        setTestMessages([]);
+        await appendTest({
+            role: "user",
+            content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
+        }, { body: { code, language, type: "testcases" } });
     };
 
     const actions = [
