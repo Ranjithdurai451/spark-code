@@ -1,4 +1,3 @@
-
 import { NextRequest } from "next/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
@@ -6,7 +5,6 @@ import { streamText } from "ai";
 const gemini = createGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY!,
 });
-
 
 const LEETCODE_TEST_CASE_PROMPT = `
 🚨 **MAIN RULE - CRITICAL UNDERSTANDING:**
@@ -123,6 +121,14 @@ LANGUAGE-SPECIFIC FUNCTION DETECTION:
 - Pattern: \`func functionName(params) returnType { }\`
 - Skip: main, init
 
+**JAVASCRIPT FUNCTIONS:**
+- Pattern: \`function functionName(params) { }\` or \`const functionName = (params) => {}\`
+- Skip: main, console methods, require, module exports
+
+**TYPESCRIPT FUNCTIONS:**
+- Pattern: \`function functionName(params): returnType { }\` or \`const functionName = (params): returnType => {}\`
+- Skip: main, console methods, import/export statements
+
 🎯 **INTELLIGENT PATTERN MATCHING:**
 
 Based on the detected function signature, automatically identify the most likely LeetCode pattern:
@@ -169,8 +175,6 @@ OR if no function found:
 🔥 **REMEMBER**: Generate test cases for what the function SHOULD do based on its signature and detected pattern, NOT what the user's potentially incorrect code does!
 `;
 
-
-
 interface FunctionSignature {
   name: string;
   parameters: string[];
@@ -195,21 +199,18 @@ export async function POST(req: NextRequest) {
       const userMessage = messages[messages.length - 1];
       
       const extractionPatterns: RegExp[] = [
-        /``````/g, // Multi-line code blocks
+        /``````/g, // Multi-line code blocks with language
         /`([^`\n]{10,})`/g, // Single line code (min 10 chars)
-        /(?:function|def|class|public|private|func|int|vector|string)\s+[\w\s\(\)]+\s*[\{\:]/i, // Function declarations
+        /(?:function|def|class|public|private|func|int|vector|string|const|let|var)\s+[\w\s\(\)]+\s*[\{\:=]/i, // Function declarations
       ];
 
-      // Fix: Properly type match as RegExpMatchArray, handle match groups safely, and avoid lint errors.
+      // Enhanced code extraction with proper handling
       for (const pattern of extractionPatterns) {
         const matches = Array.from(userMessage.content.matchAll(pattern)) as RegExpMatchArray[];
         for (const match of matches) {
-          if (pattern === extractionPatterns[0]) {
-            // This pattern is not a valid regex, so skip (was /``````/g)
-            continue;
-          } else if (match[1] && match[1].length >= 10) {
+          if (match[1] && match[1].length >= 10) {
             codeToAnalyze = match[1];
-          } else if (match[0]) {
+          } else if (match[0] && pattern === extractionPatterns[2]) {
             codeToAnalyze = match[0];
           }
           if (codeToAnalyze && codeToAnalyze.length > 20) break;
@@ -224,7 +225,7 @@ export async function POST(req: NextRequest) {
         error: "NO_CODE_PROVIDED",
         message: "No code found in the request",
         details: "Please provide code either directly or within triple backticks",
-        supportedLanguages: ["java", "cpp", "python", "go", "c"],
+        supportedLanguages: ["java", "cpp", "python", "go", "c", "javascript", "typescript"],
         retryable: true
       }, { status: 400 });
     }
@@ -244,7 +245,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate language support
-    const supportedLanguages = ["java", "cpp", "c", "python", "go"];
+    const supportedLanguages = ["java", "cpp", "c", "python", "go", "javascript", "typescript"];
     if (!supportedLanguages.includes(detectedLanguage.toLowerCase())) {
       return Response.json({
         error: "UNSUPPORTED_LANGUAGE",
@@ -351,6 +352,10 @@ function extractFunctionSignature(code: string, language: string): FunctionSigna
         return extractCFunction(code);
       case 'go':
         return extractGoFunction(code);
+      case 'javascript':
+        return extractJavaScriptFunction(code);
+      case 'typescript':
+        return extractTypeScriptFunction(code);
       default:
         return result;
     }
@@ -503,7 +508,7 @@ function extractCppFunction(code: string): FunctionSignature {
   return { name: "", parameters: [], language: 'cpp', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
 }
 
-// New C function extraction
+// C function extraction
 function extractCFunction(code: string): FunctionSignature {
   const cPattern = /(\w+(?:\s*[*])*)\s+(\w+)\s*\(([^)]*)\)\s*{/g;
   
@@ -538,7 +543,7 @@ function extractCFunction(code: string): FunctionSignature {
   return { name: "", parameters: [], language: 'c', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
 }
 
-// New Go function extraction
+// Go function extraction
 function extractGoFunction(code: string): FunctionSignature {
   const goPattern = /func\s+(\w+)\s*\(([^)]*)\)\s*([^{]*?)\s*{/g;
   
@@ -573,6 +578,138 @@ function extractGoFunction(code: string): FunctionSignature {
   return { name: "", parameters: [], language: 'go', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
 }
 
+// NEW: JavaScript function extraction
+function extractJavaScriptFunction(code: string): FunctionSignature {
+  // JavaScript function patterns (function declarations, expressions, arrow functions)
+  const jsPatterns = [
+    // Function declarations: function name() {}
+    /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
+    // Function expressions: const name = function() {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*function\s*\(([^)]*)\)\s*\{/g,
+    // Arrow functions: const name = () => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g,
+    // Arrow functions without parentheses: const name = param => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*=>/g
+  ];
+
+  for (const pattern of jsPatterns) {
+    const matches = Array.from(code.matchAll(pattern));
+    
+    for (const match of matches) {
+      const [, functionName, params] = match;
+      
+      const excludedFunctions = [
+        'main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports',
+        'log', 'error', 'warn', 'info', 'debug', 'trace'
+      ];
+      
+      if (excludedFunctions.includes(functionName.toLowerCase())) {
+        continue;
+      }
+      
+      const parameters = params ? params.split(',').map(p => p.trim()).filter(p => p) : [];
+      
+      // Validate function has body (for arrow functions, we check if there's a => followed by { or expression)
+      const functionStart = (match.index || 0) + match[0].length;
+      const afterMatch = code.substring(functionStart);
+      
+      let hasBody = false;
+      if (pattern === jsPatterns[0] || pattern === jsPatterns[1]) {
+        // Regular function or function expression - should have {
+        hasBody = afterMatch.trim().startsWith('{') || match[0].includes('{');
+      } else {
+        // Arrow function - has => in the match
+        hasBody = true;
+      }
+      
+      if (hasBody) {
+        const signature = {
+          name: functionName,
+          parameters,
+          returnType: "", // JavaScript is dynamically typed
+          language: 'javascript',
+          isValid: true,
+          algorithmPattern: detectAlgorithmPattern(functionName, parameters, "", code),
+          dataStructureTypes: detectDataStructureTypes(parameters, "")
+        };
+        
+        console.log(`✅ Found JavaScript function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+        return signature;
+      }
+    }
+  }
+  
+  return { name: "", parameters: [], language: 'javascript', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+}
+
+// NEW: TypeScript function extraction
+function extractTypeScriptFunction(code: string): FunctionSignature {
+  // TypeScript function patterns (with type annotations)
+  const tsPatterns = [
+    // Function declarations: function name(): type {}
+    /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g,
+    // Function expressions: const name = function(): type {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*function\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g,
+    // Arrow functions: const name = (): type => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*:\s*([^=]+)\s*=>/g,
+    // Function declarations without return type: function name() {}
+    /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
+    // Arrow functions without return type: const name = () => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g
+  ];
+
+  for (const pattern of tsPatterns) {
+    const matches = Array.from(code.matchAll(pattern));
+    
+    for (const match of matches) {
+      const [, functionName, params, returnType] = match;
+      
+      const excludedFunctions = [
+        'main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports',
+        'import', 'export', 'log', 'error', 'warn', 'info', 'debug', 'trace'
+      ];
+      
+      if (excludedFunctions.includes(functionName.toLowerCase())) {
+        continue;
+      }
+      
+      const parameters = params ? params.split(',')
+        .map(p => p.trim().split(':')[0].trim())
+        .filter(p => p) : [];
+      
+      // Validate function has body
+      const functionStart = (match.index || 0) + match[0].length;
+      const afterMatch = code.substring(functionStart);
+      
+      let hasBody = false;
+      if (pattern === tsPatterns[0] || pattern === tsPatterns[1] || pattern === tsPatterns[3]) {
+        // Regular function or function expression - should have {
+        hasBody = afterMatch.trim().startsWith('{') || match[0].includes('{');
+      } else {
+        // Arrow function - has => in the match
+        hasBody = true;
+      }
+      
+      if (hasBody) {
+        const signature = {
+          name: functionName,
+          parameters,
+          returnType: returnType?.trim() || "",
+          language: 'typescript',
+          isValid: true,
+          algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
+          dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+        };
+        
+        console.log(`✅ Found TypeScript function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+        return signature;
+      }
+    }
+  }
+  
+  return { name: "", parameters: [], language: 'typescript', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+}
+
 // Enhanced language detection
 function detectLanguageFromCode(code: string): string {
   const languagePatterns = [
@@ -581,8 +718,13 @@ function detectLanguageFromCode(code: string): string {
     { pattern: /#include\s*<.*>.*using\s+namespace|std::|vector<|cout\s*<<|class\s+\w+.*{/i, language: 'cpp' },
     { pattern: /#include\s*<.*>.*int\s+main|printf\s*\(|scanf\s*\(|malloc\s*\(/i, language: 'c' },
     { pattern: /def\s+\w+.*:|import\s+\w+|print\s*\(|:\s*$|if\s+__name__/m, language: 'python' },
+    // NEW: JavaScript patterns
+    { pattern: /function\s+\w+\s*\(|const\s+\w+\s*=\s*\(.*\)\s*=>|let\s+\w+\s*=|var\s+\w+\s*=|console\.log|require\s*\(|module\.exports/i, language: 'javascript' },
+    // NEW: TypeScript patterns (check before JavaScript since TS is superset)
+    { pattern: /:\s*(string|number|boolean|any|\w+\[\])\s*[=\)\{]|interface\s+\w+|type\s+\w+\s*=|import\s+.*from|export\s+(default\s+)?/i, language: 'typescript' },
   ];
 
+  // Check TypeScript first since it's a superset of JavaScript
   for (const { pattern, language } of languagePatterns) {
     if (pattern.test(code)) {
       console.log(`🔍 Detected language: ${language}`);
@@ -620,7 +762,7 @@ function detectAlgorithmPattern(functionName: string, parameters: string[], retu
   
   // Tree pattern
   if (paramStr.includes('treenode') || name.includes('tree') ||
-      codeStr.includes('left') && codeStr.includes('right') && codeStr.includes('root')) {
+      (codeStr.includes('left') && codeStr.includes('right') && codeStr.includes('root'))) {
     return 'binary_tree';
   }
   
@@ -644,7 +786,7 @@ function detectAlgorithmPattern(functionName: string, parameters: string[], retu
   
   // Matrix pattern
   if (paramStr.includes('matrix') || paramStr.includes('grid') ||
-      codeStr.includes('row') && codeStr.includes('col')) {
+      (codeStr.includes('row') && codeStr.includes('col'))) {
     return 'matrix';
   }
   
@@ -669,7 +811,7 @@ function detectDataStructureTypes(parameters: string[], returnType: string | und
   if (paramStr.includes('string') || paramStr.includes('str')) types.push('string');
   if (paramStr.includes('matrix') || paramStr.includes('grid')) types.push('matrix');
   if (paramStr.includes('graph') || paramStr.includes('adjacency')) types.push('graph');
-  if (paramStr.includes('int') || paramStr.includes('long') || paramStr.includes('double')) types.push('numeric');
+  if (paramStr.includes('int') || paramStr.includes('long') || paramStr.includes('double') || paramStr.includes('number')) types.push('numeric');
   if (paramStr.includes('bool') || paramStr.includes('boolean')) types.push('boolean');
   
   return types.length > 0 ? types : ['unknown'];
@@ -702,6 +844,16 @@ function getFunctionSuggestions(language: string): string[] {
       "func twoSum(nums []int, target int) []int { ... }",
       "func reverseList(head *ListNode) *ListNode { ... }",
       "func isValid(s string) bool { ... }"
+    ],
+    javascript: [
+      "function twoSum(nums, target) { ... }",
+      "const reverseList = (head) => { ... }",
+      "function isValid(s) { ... }"
+    ],
+    typescript: [
+      "function twoSum(nums: number[], target: number): number[] { ... }",
+      "const reverseList = (head: ListNode): ListNode => { ... }",
+      "function isValid(s: string): boolean { ... }"
     ]
   };
   

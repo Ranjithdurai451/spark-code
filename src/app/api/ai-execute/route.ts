@@ -8,6 +8,7 @@ const gemini = createGoogleGenerativeAI({
 
 const LANGUAGE_MAP: Record<string, number> = {
   javascript: 63,
+  typescript: 74,
   python: 71,
   java: 62,
   cpp: 54,
@@ -56,6 +57,10 @@ function analyzeUserCode(code: string, language: string): CodeAnalysis {
         return analyzeCCode(code, analysis);
       case 'go':
         return analyzeGoCode(code, analysis);
+      case 'javascript':
+        return analyzeJavaScriptCode(code, analysis);
+      case 'typescript':
+        return analyzeTypeScriptCode(code, analysis);
       default:
         throw new Error(`Unsupported language: ${language}`);
     }
@@ -93,7 +98,7 @@ function analyzeJavaCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
         analysis.functionName = methodName;
         analysis.returnType = returnType?.trim() || "";
         analysis.isStatic = !!staticKeyword;
-        analysis.parameters = params ? params.split(',').map(p => p.trim()).filter(p => p) : [];
+        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
         
         // Detect data structures
         const signature = `${returnType} ${params}`;
@@ -129,8 +134,8 @@ function analyzePythonCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
         analysis.functionName = functionName;
         analysis.returnType = returnType?.trim() || "";
         analysis.parameters = params ? params.split(',')
-          .map(p => p.trim().split(':')[0].trim())
-          .filter(p => p && p !== 'self') : [];
+          .map((p: string) => p.trim().split(':')[0].trim())
+          .filter((p: string) => p && p !== 'self') : [];
         
         const signature = `${returnType || ''} ${params}`;
         detectDataStructures(signature, analysis);
@@ -156,8 +161,8 @@ function analyzeCppCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
   ];
 
   for (const pattern of functionPatterns) {
-    const match = pattern.exec(code);
-    if (match) {
+    let match;
+    while ((match = pattern.exec(code)) !== null) {
       const [, returnType, functionName, params] = match;
       
       console.log(`🎯 Found C++ function: ${functionName}`, { returnType, params });
@@ -165,7 +170,7 @@ function analyzeCppCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
       if (!isExcludedCppMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = returnType.trim();
-        analysis.parameters = params ? params.split(',').map(p => p.trim()).filter(p => p) : [];
+        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
         
         const signature = `${returnType} ${params}`;
         detectDataStructures(signature, analysis);
@@ -185,8 +190,8 @@ function analyzeCppCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 function analyzeCCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
   const functionPattern = /([\w\*\s]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g;
   
-  const match = functionPattern.exec(code);
-  if (match) {
+  let match;
+  while ((match = functionPattern.exec(code)) !== null) {
     const [, returnType, functionName, params] = match;
     
     console.log(`🎯 Found C function: ${functionName}`, { returnType, params });
@@ -194,7 +199,7 @@ function analyzeCCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
     if (!isExcludedCMethod(functionName)) {
       analysis.functionName = functionName;
       analysis.returnType = returnType.trim();
-      analysis.parameters = params ? params.split(',').map(p => p.trim()).filter(p => p) : [];
+      analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
       
       const signature = `${returnType} ${params}`;
       detectDataStructures(signature, analysis);
@@ -213,8 +218,8 @@ function analyzeCCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
   const functionPattern = /func\s+(\w+)\s*\(([^)]*)\)\s*([^{]*?)\s*\{/g;
   
-  const match = functionPattern.exec(code);
-  if (match) {
+  let match;
+  while ((match = functionPattern.exec(code)) !== null) {
     const [, functionName, params, returnType] = match;
     
     console.log(`🎯 Found Go function: ${functionName}`, { params, returnType });
@@ -222,7 +227,7 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
     if (!isExcludedGoMethod(functionName)) {
       analysis.functionName = functionName;
       analysis.returnType = returnType?.trim() || "";
-      analysis.parameters = params ? params.split(',').map(p => p.trim()).filter(p => p) : [];
+      analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
       
       const signature = `${returnType} ${params}`;
       detectDataStructures(signature, analysis);
@@ -234,6 +239,92 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
   }
   
   console.log(`❌ No valid Go function found in code`);
+  return analysis;
+}
+
+// JavaScript code analysis
+function analyzeJavaScriptCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
+  // JavaScript function patterns (function declarations, expressions, arrow functions)
+  const functionPatterns = [
+    // Function declarations: function name() {}
+    /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
+    // Function expressions: const name = function() {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*function\s*\(([^)]*)\)\s*\{/g,
+    // Arrow functions: const name = () => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g,
+    // Arrow functions without parentheses: const name = param => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*=>/g
+  ];
+
+  for (const pattern of functionPatterns) {
+    let match;
+    while ((match = pattern.exec(code)) !== null) {
+      const [, functionName, params] = match;
+      
+      console.log(`🎯 Found JavaScript function: ${functionName}`, { params });
+      
+      if (!isExcludedJavaScriptMethod(functionName)) {
+        analysis.functionName = functionName;
+        analysis.returnType = ""; // JavaScript is dynamically typed
+        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
+        
+        const signature = `${params}`;
+        detectDataStructures(signature, analysis);
+        detectDataStructures(code, analysis); // Also check in code body
+        detectAlgorithmPattern(functionName, signature, code, analysis);
+        
+        console.log(`✅ JavaScript function detected:`, analysis);
+        return analysis;
+      }
+    }
+  }
+  
+  console.log(`❌ No valid JavaScript function found in code`);
+  return analysis;
+}
+
+// TypeScript code analysis
+function analyzeTypeScriptCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
+  // TypeScript function patterns (with type annotations)
+  const functionPatterns = [
+    // Function declarations: function name(): type {}
+    /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g,
+    // Function expressions: const name = function(): type {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*function\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g,
+    // Arrow functions: const name = (): type => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*:\s*([^=]+)\s*=>/g,
+    // Function declarations without return type: function name() {}
+    /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
+    // Arrow functions without return type: const name = () => {}
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g
+  ];
+
+  for (const pattern of functionPatterns) {
+    let match;
+    while ((match = pattern.exec(code)) !== null) {
+      const [, functionName, params, returnType] = match;
+      
+      console.log(`🎯 Found TypeScript function: ${functionName}`, { params, returnType });
+      
+      if (!isExcludedTypeScriptMethod(functionName)) {
+        analysis.functionName = functionName;
+        analysis.returnType = returnType?.trim() || "";
+        analysis.parameters = params ? params.split(',')
+          .map((p: string) => p.trim().split(':')[0].trim())
+          .filter((p: string) => p) : [];
+        
+        const signature = `${returnType || ''} ${params}`;
+        detectDataStructures(signature, analysis);
+        detectDataStructures(code, analysis); // Also check in code body
+        detectAlgorithmPattern(functionName, signature, code, analysis);
+        
+        console.log(`✅ TypeScript function detected:`, analysis);
+        return analysis;
+      }
+    }
+  }
+  
+  console.log(`❌ No valid TypeScript function found in code`);
   return analysis;
 }
 
@@ -260,6 +351,16 @@ function isExcludedCMethod(name: string): boolean {
 
 function isExcludedGoMethod(name: string): boolean {
   const excluded = ['main', 'init', 'if', 'for', 'switch'];
+  return excluded.includes(name.toLowerCase());
+}
+
+function isExcludedJavaScriptMethod(name: string): boolean {
+  const excluded = ['main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports'];
+  return excluded.includes(name.toLowerCase());
+}
+
+function isExcludedTypeScriptMethod(name: string): boolean {
+  const excluded = ['main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports', 'import', 'export'];
   return excluded.includes(name.toLowerCase());
 }
 
@@ -370,6 +471,18 @@ function getSimpleLanguageInstructions(language: string, input: any[], funcName:
 - Calls ${funcName} function
 - Prints result with fmt.Println`;
     
+    case 'javascript':
+      return `Add main execution that:
+- Creates variables from: ${JSON.stringify(input)}
+- Calls ${funcName} function
+- Prints result with console.log()`;
+    
+    case 'typescript':
+      return `Add main execution that:
+- Creates variables from: ${JSON.stringify(input)}
+- Calls ${funcName} function
+- Prints result with console.log()`;
+    
     default:
       return '';
   }
@@ -387,6 +500,7 @@ function extractCode(aiResponse: string, language: string = ''): string {
     // Common language aliases
     lang === 'cpp' ? /``````/i : null,
     lang === 'javascript' ? /``````/i : null,
+    lang === 'typescript' ? /``````/i : null,
     lang === 'python' ? /``````/i : null,
     // Generic code block
     /``````/
@@ -401,14 +515,12 @@ function extractCode(aiResponse: string, language: string = ''): string {
   }
 
   // Final fallback: clean up any remaining backticks
+  // Final fallback: remove all triple backtick code blocks and trim
   return aiResponse
-    .replace(/```language/g, '')
-    .replace(/```/g, '')
+    .replace(/```[\s\S]*?```/g, '') // Remove all ```...``` code blocks
+    .replace(/```/g, '')            // Remove any stray ```
     .trim();
 }
-
-
-
 
 // More reliable wrapper code generation
 async function buildExecutableCode(userCode: string, language: string, testCase: any, analysis: CodeAnalysis): Promise<string> {
@@ -424,7 +536,7 @@ async function buildExecutableCode(userCode: string, language: string, testCase:
       maxTokens: 2000
     });
     
-    let code = extractCode(ai.text,language);
+    let code = extractCode(ai.text, language);
     
     console.log(`📝 Generated code (${code.length} chars):`, code.substring(0, 300) + "...");
     
@@ -458,7 +570,7 @@ public class Main {
         Main instance = new Main();
         // Simple input handling
         ${generateJavaInputs(input)}
-        Object result = instance.${funcName}(${input.map((_, i) => `param${i}`).join(', ')});
+        Object result = instance.${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
         System.out.println(result);
     }
 }`.trim();
@@ -470,7 +582,7 @@ ${userCode}
 if __name__ == "__main__":
     # Simple input handling
     ${generatePythonInputs(input)}
-    result = ${funcName}(${input.map((_, i) => `param${i}`).join(', ')})
+    result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')})
     print(result)
 `.trim();
     
@@ -485,7 +597,7 @@ ${userCode}
 
 int main() {
     ${generateCppInputs(input)}
-    auto result = ${funcName}(${input.map((_, i) => `param${i}`).join(', ')});
+    auto result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
     cout << result << endl;
     return 0;
 }`.trim();
@@ -499,7 +611,7 @@ ${userCode}
 
 int main() {
     ${generateCInputs(input)}
-    int result = ${funcName}(${input.map((_, i) => `param${i}`).join(', ')});
+    int result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
     printf("%d\\n", result);
     return 0;
 }`.trim();
@@ -513,9 +625,33 @@ ${userCode}
 
 func main() {
     ${generateGoInputs(input)}
-    result := ${funcName}(${input.map((_, i) => `param${i}`).join(', ')})
+    result := ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')})
     fmt.Println(result)
 }`.trim();
+    
+    case 'javascript':
+      return `
+${userCode}
+
+// Main execution
+(function() {
+    ${generateJavaScriptInputs(input)}
+    const result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+    console.log(result);
+})();
+`.trim();
+    
+    case 'typescript':
+      return `
+${userCode}
+
+// Main execution
+(function(): void {
+    ${generateTypeScriptInputs(input)}
+    const result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+    console.log(result);
+})();
+`.trim();
     
     default:
       throw new Error(`Unsupported language: ${language}`);
@@ -572,6 +708,33 @@ function generateGoInputs(input: any[]): string {
     if (typeof value === 'number') return `    ${varName} := ${value}`;
     if (typeof value === 'string') return `    ${varName} := "${value}"`;
     return `    ${varName} := ${value}`;
+  }).join('\n');
+}
+
+function generateJavaScriptInputs(input: any[]): string {
+  return input.map((value, i) => {
+    const varName = `param${i}`;
+    return `    const ${varName} = ${JSON.stringify(value)};`;
+  }).join('\n');
+}
+
+function generateTypeScriptInputs(input: any[]): string {
+  return input.map((value, i) => {
+    const varName = `param${i}`;
+    let type = 'any';
+    
+    if (Array.isArray(value)) {
+      type = typeof value[0] === 'number' ? 'number[]' : 
+             typeof value[0] === 'string' ? 'string[]' : 'any[]';
+    } else if (typeof value === 'number') {
+      type = 'number';
+    } else if (typeof value === 'string') {
+      type = 'string';
+    } else if (typeof value === 'boolean') {
+      type = 'boolean';
+    }
+    
+    return `    const ${varName}: ${type} = ${JSON.stringify(value)};`;
   }).join('\n');
 }
 

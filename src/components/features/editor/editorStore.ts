@@ -5,7 +5,7 @@ import { persist } from "zustand/middleware";
 /**
  * Supported programming languages for the LeetCode-style coding platform
  */
-export type Language = "java" | "python" | "javascript" | "cpp" | "c" | "go";
+export type Language = "java" | "python" | "javascript" | "typescript" | "cpp" | "c" | "go";
 
 /**
  * Configuration interface for each programming language
@@ -21,6 +21,8 @@ export interface LanguageConfig {
   displayName: string;
   /** File extension for syntax highlighting and IDE features */
   extension: string;
+  /** Whether formatting is supported for this language */
+  formatSupported: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export const languages: LanguageConfig[] = [
     filename: "Main.java",
     displayName: "Java",
     extension: "java",
+    formatSupported: true,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
 // Example: Two Sum, Binary Search, etc.
 
@@ -46,6 +49,7 @@ public class Main {
     filename: "solution.py",
     displayName: "Python",
     extension: "py",
+    formatSupported: false,
     defaultCode: `# Write a LeetCode-like problem in a function to analyze and generate tests in comments
 # Example: Two Sum, Binary Search, etc.
 
@@ -56,6 +60,18 @@ print("Hello World")`,
     filename: "solution.js",
     displayName: "JavaScript",
     extension: "js",
+    formatSupported: true,
+    defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
+// Example: Two Sum, Binary Search, etc.
+
+console.log("Hello World");`,
+  },
+  {
+    name: "typescript",
+    filename: "solution.ts",
+    displayName: "TypeScript",
+    extension: "ts",
+    formatSupported: true,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
 // Example: Two Sum, Binary Search, etc.
 
@@ -66,6 +82,7 @@ console.log("Hello World");`,
     filename: "solution.cpp",
     displayName: "C++",
     extension: "cpp",
+    formatSupported: false,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
 // Example: Two Sum, Binary Search, etc.
 
@@ -81,6 +98,7 @@ int main() {
     filename: "solution.c",
     displayName: "C",
     extension: "c",
+    formatSupported: false,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
 // Example: Two Sum, Binary Search, etc.
 
@@ -96,6 +114,7 @@ int main() {
     filename: "solution.go",
     displayName: "Go",
     extension: "go",
+    formatSupported: false,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
 // Example: Two Sum, Binary Search, etc.
 
@@ -108,7 +127,6 @@ func main() {
 }`,
   },
 ];
-
 
 /**
  * Represents an editor tab with code content
@@ -157,6 +175,8 @@ interface EditorState {
   tabSize: number;
   /** Whether to use spaces instead of tabs */
   insertSpaces: boolean;
+  /** Whether to enable auto formatting on save */
+  formatOnSave: boolean;
   
   // Actions - Tab Management
   /** Replace all tabs with the provided array */
@@ -195,6 +215,8 @@ interface EditorState {
   setTabSize: (size: number) => void;
   /** Toggle between spaces and tabs for indentation */
   toggleInsertSpaces: () => void;
+  /** Toggle format on save */
+  toggleFormatOnSave: () => void;
   
   // Utility Functions
   /** Get the currently active tab */
@@ -203,6 +225,8 @@ interface EditorState {
   getTabById: (id: string) => Tab | null;
   /** Check if any tabs have unsaved changes */
   hasUnsavedChanges: () => boolean;
+  /** Check if formatting is supported for active tab */
+  isFormatSupported: () => boolean;
 }
 
 /**
@@ -232,6 +256,7 @@ export const useEditorStore = create<EditorState>()(
       showInvisibles: false,
       tabSize: 4,
       insertSpaces: true,
+      formatOnSave: false,
 
       // Tab Management Actions
       setTabs: (tabs) => set({ tabs }),
@@ -322,6 +347,9 @@ export const useEditorStore = create<EditorState>()(
       toggleInsertSpaces: () =>
         set((state) => ({ insertSpaces: !state.insertSpaces })),
 
+      toggleFormatOnSave: () =>
+        set((state) => ({ formatOnSave: !state.formatOnSave })),
+
       // Utility Functions
       getActiveTab: () => {
         const state = get();
@@ -334,6 +362,13 @@ export const useEditorStore = create<EditorState>()(
       
       hasUnsavedChanges: () => {
         return get().tabs.some((tab) => tab.isDirty);
+      },
+
+      isFormatSupported: () => {
+        const activeTab = get().getActiveTab();
+        if (!activeTab) return false;
+        const config = getLanguageConfig(activeTab.language);
+        return config.formatSupported;
       },
     }),
     {
@@ -349,6 +384,7 @@ export const useEditorStore = create<EditorState>()(
         showInvisibles: state.showInvisibles,
         tabSize: state.tabSize,
         insertSpaces: state.insertSpaces,
+        formatOnSave: state.formatOnSave,
       }),
     }
   )
