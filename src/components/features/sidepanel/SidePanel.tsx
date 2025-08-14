@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ContextMenuSeparator } from "@radix-ui/react-context-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Simplified error parser
 function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
@@ -296,7 +297,8 @@ export default function SidePanel() {
             onClick: isAnalyzing ? stop : handleAnalyze,
             buttonText: isAnalyzing ? "Stop" : "Analyze",
             shortcut: "Alt+A",
-            features: ["Quality Score", "Performance Tips", "Best Practices"]
+            features: ["Quality Score", "Performance Tips", "Best Practices"],
+            beta: false
         },
         {
             id: "testcases",
@@ -310,7 +312,8 @@ export default function SidePanel() {
             onClick: isGeneratingTests ? stopTest : handleGenerateTests,
             buttonText: isGeneratingTests ? "Stop" : "Generate",
             shortcut: "Alt+T",
-            features: ["Edge Cases", "Input Validation", "Coverage Tests"]
+            features: ["Edge Cases", "Input Validation", "Coverage Tests"],
+            beta: true
         },
         {
             id: "output",
@@ -324,7 +327,8 @@ export default function SidePanel() {
             onClick: handleRun,
             buttonText: running ? "Running..." : "Execute",
             shortcut: "Alt+E",
-            features: ["Real-time Output", "Error Details", "Debug Info"]
+            features: ["Real-time Output", "Error Details", "Debug Info"],
+            beta: false
         }
     ];
 
@@ -369,6 +373,7 @@ export default function SidePanel() {
                                                                     : "bg-muted/50 border-border text-foreground hover:bg-primary/10"
                                                         )}>
                                                             <IconComponent className="w-4 h-4" />
+
                                                         </div>
 
                                                         {/* Status Dot */}
@@ -394,7 +399,23 @@ export default function SidePanel() {
                                                         {/* Title and Status Row */}
                                                         <div className="flex items-center justify-between">
                                                             <h3 className="font-semibold text-foreground text-sm leading-tight">
-                                                                {action.title}
+                                                                {action.title}                     {action.beta && (
+                                                                    <TooltipProvider>
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Badge
+                                                                                    variant="outline"
+                                                                                    className="text-[10px] h-4 px-1 text-yellow-700 border-yellow-400 bg-yellow-100 dark:bg-yellow-900/20 dark:text-yellow-300 cursor-help"
+                                                                                >
+                                                                                    Beta
+                                                                                </Badge>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>This feature is experimental and may not work for all code inputs.</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    </TooltipProvider>
+                                                                )}
                                                             </h3>
                                                             <div className="flex items-center gap-2">
                                                                 <kbd className={cn(

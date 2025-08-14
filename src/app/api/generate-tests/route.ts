@@ -7,18 +7,22 @@ const gemini = createGoogleGenerativeAI({
 });
 
 const LEETCODE_TEST_CASE_PROMPT = `
-🚨 **MAIN RULE - CRITICAL UNDERSTANDING:**
-ALWAYS generate test cases based on the DETECTED ALGORITHM PATTERN and FUNCTION SIGNATURE, NOT the user's code implementation.
-The user's code may be incomplete, incorrect, or buggy. Your job is to:
-1. Identify the INTENDED algorithm pattern from function name and signature
-2. Generate CORRECT test cases for that specific algorithmic pattern
-3. IGNORE the user's implementation logic - focus only on what the function SHOULD do based on its signature
+🚨 **MAIN RULES - READ CAREFULLY:**
+- You are an expert LeetCode test case generator.
+- ALWAYS generate test cases based ONLY on the DETECTED ALGORITHM PATTERN and FUNCTION SIGNATURE, NOT the user's code implementation.
+- The user's code may be incomplete, incorrect, or buggy.
+- **DO NOT read or use any code comments. Comments are unrelated to the problem and must be ignored.**
+- Your job is to:
+  1. Identify the INTENDED algorithm pattern from the function name and signature.
+  2. Generate CORRECT test cases for that specific algorithmic pattern.
+  3. IGNORE the user's implementation logic and all comments—focus only on what the function SHOULD do based on its signature.
 
-You are an expert LeetCode test case generator. Analyze the provided {language} code and generate exactly 3 test cases in EXACT LeetCode JSON format.
+You will be given code in {language}. Analyze it and generate exactly 3 test cases in precise LeetCode JSON format.
 
-CRITICAL: You MUST identify a clear, callable function in the code. If no function is found, respond with: {"error": "NO_FUNCTION_FOUND", "message": "No callable function detected in the provided code"}
+**IMPORTANT:** You MUST identify a clear, callable function in the code. If no function is found, respond with:
+\`{"error": "NO_FUNCTION_FOUND", "message": "No callable function detected in the provided code"}\`
 
-CODE TO ANALYZE:
+CODE TO ANALYZE (ignore all comments in this code):
 \`\`\`{language}
 {user_code}
 \`\`\`
@@ -30,7 +34,7 @@ CODE TO ANALYZE:
 
 DETECTED FUNCTION ANALYSIS:
 - Function Name: {function_name}
-- Parameters: {function_params}  
+- Parameters: {function_params}
 - Return Type: {return_type}
 - Language: {language}
 - Algorithm Pattern: [AUTO-DETECT FROM SIGNATURE]
@@ -39,7 +43,7 @@ DETECTED FUNCTION ANALYSIS:
 
 **PATTERN IDENTIFICATION BY FUNCTION SIGNATURE:**
 - \`twoSum(array, target) -> indices[]\` → Two Sum Pattern
-- \`search(sortedArray, target) -> index\` → Binary Search Pattern  
+- \`search(sortedArray, target) -> index\` → Binary Search Pattern
 - \`reverse(ListNode) -> ListNode\` → Linked List Pattern
 - \`inorderTraversal(TreeNode) -> array\` → Binary Tree Pattern
 - \`isValid(string) -> boolean\` → String Validation Pattern
@@ -105,7 +109,7 @@ LANGUAGE-SPECIFIC FUNCTION DETECTION:
 - Pattern: \`(public|private|protected)? (static)? ReturnType functionName(params)\`
 - Skip: main, constructors, toString, equals, hashCode
 
-**PYTHON FUNCTIONS:**  
+**PYTHON FUNCTIONS:**
 - Pattern: \`def function_name(params):\`
 - Skip: __init__, __str__, __main__, dunder methods
 
@@ -133,9 +137,9 @@ LANGUAGE-SPECIFIC FUNCTION DETECTION:
 
 Based on the detected function signature, automatically identify the most likely LeetCode pattern:
 
-1. **Function Name Analysis**: 
+1. **Function Name Analysis**:
    - Contains "sum" → Array sum problems
-   - Contains "search" → Binary search problems  
+   - Contains "search" → Binary search problems
    - Contains "reverse" → Linked list problems
    - Contains "valid" → Validation problems
    - Contains "max/min" → Optimization problems
@@ -143,7 +147,7 @@ Based on the detected function signature, automatically identify the most likely
 2. **Parameter Analysis**:
    - \`(array, target)\` → Two Sum family
    - \`(ListNode)\` → Linked List operations
-   - \`(TreeNode)\` → Binary Tree operations  
+   - \`(TreeNode)\` → Binary Tree operations
    - \`(matrix)\` → 2D array problems
    - \`(string)\` → String manipulation
 
@@ -154,16 +158,16 @@ Based on the detected function signature, automatically identify the most likely
    - \`List<List<>>\` → Level-order/grouping results
 
 STRICT REQUIREMENTS:
-1. **Signature-Based Generation**: Generate test cases based on what the function SHOULD do, not what the user implemented
+1. **Signature-Based Generation**: Generate test cases based on what the function SHOULD do, not what the user implemented.
 2. **Input Wrapping**: ALL function parameters wrapped in array: func(a,b) → [a,b]
-3. **Pattern Compliance**: Test cases must match standard LeetCode patterns for the detected algorithm
-4. **Edge Case Coverage**: Include empty inputs, boundary conditions, and corner cases
-5. **Data Type Accuracy**: Maintain exact LeetCode data types and formats
+3. **Pattern Compliance**: Test cases must match standard LeetCode patterns for the detected algorithm.
+4. **Edge Case Coverage**: Include empty inputs, boundary conditions, and corner cases.
+5. **Data Type Accuracy**: Maintain exact LeetCode data types and formats.
 
 TEST CASE GENERATION STRATEGY:
-1. **Standard Case (50%)**: Classic example for the detected pattern
-2. **Edge Case (30%)**: Boundary conditions (empty, single element, extremes)
-3. **Complex Case (20%)**: Larger input that thoroughly tests the algorithm
+1. **Standard Case (50%)**: Classic example for the detected pattern.
+2. **Edge Case (30%)**: Boundary conditions (empty, single element, extremes).
+3. **Complex Case (20%)**: Larger input that thoroughly tests the algorithm.
 
 RESPONSE FORMAT:
 Return ONLY valid JSON. Either:
@@ -172,7 +176,7 @@ Return ONLY valid JSON. Either:
 OR if no function found:
 \`{"error": "NO_FUNCTION_FOUND", "message": "No callable function detected in the provided code"}\`
 
-🔥 **REMEMBER**: Generate test cases for what the function SHOULD do based on its signature and detected pattern, NOT what the user's potentially incorrect code does!
+🔥 **REMEMBER:** Generate test cases for what the function SHOULD do based on its signature and detected pattern, NOT what the user's potentially incorrect code does. **NEVER use or reference any code comments.**
 `;
 
 interface FunctionSignature {

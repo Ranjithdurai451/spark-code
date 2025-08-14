@@ -101,7 +101,7 @@ interface ErrorDetails {
 }
 
 // Supported languages - updated to match the new endpoint
-const SUPPORTED_LANGUAGES = ['java', 'python', 'javascript', 'cpp', 'c', 'go'] as const;
+const SUPPORTED_LANGUAGES = ['java', 'python', 'javascript', 'typescript', 'cpp', 'c', 'go'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 
 export function TestCasesPanel({

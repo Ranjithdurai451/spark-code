@@ -36,7 +36,6 @@ export const languages: LanguageConfig[] = [
     extension: "java",
     formatSupported: true,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
-// Example: Two Sum, Binary Search, etc.
 
 public class Main {
     public static void main(String[] args) {
@@ -51,7 +50,6 @@ public class Main {
     extension: "py",
     formatSupported: false,
     defaultCode: `# Write a LeetCode-like problem in a function to analyze and generate tests in comments
-# Example: Two Sum, Binary Search, etc.
 
 print("Hello World")`,
   },
@@ -62,7 +60,6 @@ print("Hello World")`,
     extension: "js",
     formatSupported: true,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
-// Example: Two Sum, Binary Search, etc.
 
 console.log("Hello World");`,
   },
@@ -73,7 +70,6 @@ console.log("Hello World");`,
     extension: "ts",
     formatSupported: true,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
-// Example: Two Sum, Binary Search, etc.
 
 console.log("Hello World");`,
   },
@@ -84,7 +80,6 @@ console.log("Hello World");`,
     extension: "cpp",
     formatSupported: false,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
-// Example: Two Sum, Binary Search, etc.
 
 #include <iostream>
 
@@ -100,7 +95,6 @@ int main() {
     extension: "c",
     formatSupported: false,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
-// Example: Two Sum, Binary Search, etc.
 
 #include <stdio.h>
 
@@ -116,7 +110,6 @@ int main() {
     extension: "go",
     formatSupported: false,
     defaultCode: `// Write a LeetCode-like problem in a function to analyze and generate tests in comments
-// Example: Two Sum, Binary Search, etc.
 
 package main
 

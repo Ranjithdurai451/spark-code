@@ -179,6 +179,7 @@ export default function CodeEditorComponent() {
   }, [activeTab, formatCode, updateTab, isFormatSupported]);
 
   // Fixed keyboard shortcut for formatting
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Only handle if not focused on Monaco editor to prevent conflicts
@@ -188,7 +189,7 @@ export default function CodeEditorComponent() {
       }
 
       // Ctrl+Shift+F or Cmd+Shift+F for format
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'F') {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
         event.preventDefault();
         handleFormatCode();
       }
