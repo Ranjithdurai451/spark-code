@@ -2,7 +2,6 @@
 import MonacoEditor from "@monaco-editor/react";
 import { useEditorStore, getLanguageConfig } from "./editorStore";
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import Tabs from "./Tabs";
 import { useThemeStore } from "../themes/theme-store";
@@ -312,6 +311,7 @@ export default function CodeEditorComponent() {
                     if (VimMode?.Vim?.map) {
                       VimMode.Vim.map('jj', '<Esc>', 'insert');
                       VimMode.Vim.map('jk', '<Esc>', 'insert');
+
                     }
                   }, 100);
                 } catch (error) {
