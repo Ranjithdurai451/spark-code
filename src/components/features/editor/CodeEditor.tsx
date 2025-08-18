@@ -263,6 +263,14 @@ export default function CodeEditorComponent() {
           }}
           onMount={async (editor) => {
             editorRef.current = editor;
+            editor.onKeyDown(e => {
+              const isFormat =
+                (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyF";
+              if (isFormat) {
+                e.preventDefault();        // ① block vim
+                handleFormatCode();        // ② run your formatter
+              }
+            });
             // Initialize vim mode if enabled
             if (isVimModeEnabled && statusBarRef.current) {
               await loadVimMode();
@@ -278,14 +286,17 @@ export default function CodeEditorComponent() {
                   }, 100);
                   // Fix: Add format shortcut for Vim mode using Vim's key mapping
                   // This will map <leader>f in normal mode to trigger formatting
-                  setTimeout(() => {
-                    if (VimMode?.Vim?.defineEx) {
-                      // :Format command in Vim
-                      VimMode.Vim.defineEx('Format', '', function (_cm: any, _input: any) {
-                        handleFormatCode();
-                      });
-                    }
-                  }, 200);
+                  // setTimeout(() => {
+                  //   if (VimMode?.Vim?.defineEx) {
+                  //     // :Format command in Vim
+                  //     VimMode.Vim.defineEx('Format', '', function (_cm: any, _input: any) {
+                  //       handleFormatCode();
+                  //     });
+                  //   }
+                  // }, 200);
+                  // inside onMount – before initVimMode(...)
+
+
                 } catch (error) {
                   console.error("Error initializing vim mode:", error);
                 }
@@ -300,6 +311,7 @@ export default function CodeEditorComponent() {
                 handleFormatCode();
               }
             );
+
           }}
           onChange={(value) => {
             updateTab(activeTab.id, { code: value ?? "" });
