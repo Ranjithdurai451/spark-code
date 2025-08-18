@@ -20,7 +20,7 @@ export default function MobileNotSupported() {
                     </div>
                     <CardTitle className="text-2xl font-bold">Desktop Required</CardTitle>
                     <CardDescription className="text-base">
-                        SparkEditor is optimized for desktop development experience.
+                        SparkCode is optimized for desktop development experience.
                         Please access this application on a larger screen for the best coding experience.
                     </CardDescription>
                 </CardHeader>
