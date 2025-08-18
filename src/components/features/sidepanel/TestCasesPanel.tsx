@@ -36,10 +36,14 @@ import {
     Database,
     Cpu,
     Network,
-    Layers
+    Layers,
+    FileCode2,
+    WrapText,
+    CopyIcon,
+    AlignLeft
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Tab } from "@/components/features/editor/editorStore";
+import { Tab, useEditorStore } from "@/components/features/editor/editorStore";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +54,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Codeblock } from "@/components/mardown-render/CodeBlock";
 
 interface TestCase {
     id: string;
@@ -62,6 +67,7 @@ interface TestCase {
     executionTime?: number;
     memoryUsage?: number;
     isCustom?: boolean;
+    fullCode?: string,
     // New fields from updated endpoint
     functionTested?: string;
     algorithmPattern?: string;
@@ -473,7 +479,8 @@ export function TestCasesPanel({
                     functionTested: data.functionTested,
                     algorithmPattern: data.algorithmPattern,
                     dataStructuresUsed: data.dataStructuresUsed,
-                    processingTime: data.processingTime
+                    processingTime: data.processingTime,
+                    fullCode: data.fullCode
                 } : tc
             ));
 
@@ -570,6 +577,25 @@ export function TestCasesPanel({
             }
         }
     }, [testCases, runTest, pauseRequested, executionStats]);
+    const [showCodeDialog, setShowCodeDialog] = useState(false);
+    const [codeToShow, setCodeToShow] = useState<string>("");
+    const [wrapPreview, setWrapPreview] = useState(false);
+    const openCodeDialog = (tc: TestCase) => {
+        if (!tc.fullCode) return;
+        setCodeToShow(tc.fullCode);
+        setWrapPreview(false);           // reset wrap
+        setShowCodeDialog(true);
+    };
+
+    const { updateTab } = useEditorStore();
+
+    const embedCode = () => {
+        if (tab && codeToShow) {
+            updateTab(tab.id, { code: codeToShow });
+            toast.success("Code embedded in editor");
+            setShowCodeDialog(false);
+        }
+    };
 
     // Pause test execution
     const pauseTests = useCallback(() => {
@@ -577,6 +603,11 @@ export function TestCasesPanel({
         setRunningTests(false);
         toast.info('Stopping test execution...');
     }, []);
+
+    const copyCode = () => {
+        navigator.clipboard.writeText(codeToShow);
+        toast.success("Code copied to clipboard");
+    };
 
     // Skip current test
     const skipTest = useCallback((testId: string) => {
@@ -1328,6 +1359,24 @@ export function TestCasesPanel({
                                                                                 Skip
                                                                             </Button>
                                                                         )}
+                                                                        {testCase.fullCode && (
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <Button
+                                                                                        variant="ghost"
+                                                                                        size="sm"
+                                                                                        className="h-8 w-8 p-0"
+                                                                                        onClick={() => openCodeDialog(testCase)}
+                                                                                    >
+                                                                                        <FileCode2 className="w-4 h-4" />
+                                                                                    </Button>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>
+                                                                                    <p>View generated code</p>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        )}
+
 
                                                                         <div className="flex-1" />
 
@@ -1547,6 +1596,40 @@ export function TestCasesPanel({
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                <Dialog open={showCodeDialog} onOpenChange={setShowCodeDialog}>
+                    <DialogContent className=" min-w-[min(95dvw,900px)] max-w-[900px] p-0 flex flex-col overflow-hidden">
+                        {/* HEADER */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b bg-background/80 backdrop-blur">
+                            <div className="flex items-center gap-2">
+                                <FileCode2 className="w-5 h-5" />
+                                <span className="font-semibold text-sm">Generated Code</span>
+                                <Badge variant="secondary" className="text-xxs ml-2">
+                                    {tab?.language?.toUpperCase() ?? "TXT"}
+                                </Badge>
+                            </div>
+
+
+                        </div>
+
+                        {/* BODY */}
+                        <div className="flex-1 p-4 overflow-y-auto max-h-[60dvh]">      {/* ← was overflow-hidden */}
+                            <Codeblock
+                                className={`language-${tab?.language ?? "plaintext"}`}
+                                default={{ expand: true, wrap: wrapPreview }}
+                            >
+                                {codeToShow}
+                            </Codeblock>
+                        </div>
+                        {/* FOOTER */}
+                        <div className="flex justify-end border-t px-4 py-3">
+                            <Button onClick={embedCode}>
+                                <Cpu className="w-4 h-4 mr-2" />
+                                Embed in Editor
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
             </div>
         </TooltipProvider>
     );

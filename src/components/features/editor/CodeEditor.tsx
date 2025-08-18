@@ -5,8 +5,6 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
 import Tabs from "./Tabs";
 import { useThemeStore } from "../themes/theme-store";
-import { Wand2 } from "lucide-react";
-
 // Dynamic imports for monaco-vim and prettier to avoid SSR issues
 let initVimMode: any = null;
 let VimMode: any = null;
@@ -15,7 +13,6 @@ let prettierPluginBabel: any = null;
 let prettierPluginEstree: any = null;
 let prettierPluginTypeScript: any = null;
 let prettierPluginJava: any = null;
-
 const loadVimMode = async () => {
   if (typeof window !== "undefined" && (!initVimMode || !VimMode)) {
     try {
@@ -28,7 +25,6 @@ const loadVimMode = async () => {
     }
   }
 };
-
 const loadPrettier = async () => {
   if (typeof window !== "undefined" && !prettier) {
     try {
@@ -37,7 +33,6 @@ const loadPrettier = async () => {
       prettierPluginBabel = (await import("prettier/plugins/babel")).default;
       prettierPluginEstree = (await import("prettier/plugins/estree")).default;
       prettierPluginTypeScript = (await import("prettier/plugins/typescript")).default;
-
       // Load Java plugin for prettier
       try {
         prettierPluginJava = (await import("prettier-plugin-java")).default;
@@ -50,7 +45,6 @@ const loadPrettier = async () => {
     }
   }
 };
-
 export default function CodeEditorComponent() {
   const { themeState } = useThemeStore();
   const {
@@ -66,15 +60,12 @@ export default function CodeEditorComponent() {
     formatOnSave,
     isFormatSupported
   } = useEditorStore();
-
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const [isFormatting, setIsFormatting] = useState(false);
   const [editorKey, setEditorKey] = useState(0); // Key to force re-mount
-
   const editorRef = useRef<any>(null);
   const vimModeRef = useRef<any>(null);
   const statusBarRef = useRef<HTMLDivElement>(null);
-
   // Load vim mode and prettier dynamically
   useEffect(() => {
     if (isVimModeEnabled) {
@@ -82,7 +73,6 @@ export default function CodeEditorComponent() {
     }
     loadPrettier();
   }, [isVimModeEnabled]);
-
   // Force editor re-mount when vim mode changes
   useEffect(() => {
     // Cleanup existing vim mode before re-mount
@@ -94,29 +84,23 @@ export default function CodeEditorComponent() {
       }
       vimModeRef.current = null;
     }
-
     // Clear status bar
     if (statusBarRef.current) {
       statusBarRef.current.innerHTML = "";
     }
-
     // Force re-mount by changing key
     setEditorKey(prev => prev + 1);
   }, [isVimModeEnabled]);
-
   // Format code function
   const formatCode = useCallback(async (code: string, language: string): Promise<string> => {
     if (!prettier) {
       await loadPrettier();
     }
-
     if (!prettier) {
       throw new Error("Prettier is not available");
     }
-
     let parser: string;
     let plugins: any[] = [];
-
     switch (language) {
       case "javascript":
         parser = "babel";
@@ -136,7 +120,6 @@ export default function CodeEditorComponent() {
       default:
         throw new Error(`Formatting not supported for ${language}`);
     }
-
     const options = {
       parser,
       plugins,
@@ -144,17 +127,15 @@ export default function CodeEditorComponent() {
       tabWidth: tabSize,
       useTabs: !insertSpaces,
       semi: true,
-      singleQuote: language === "javascript" || language === "typescript",
+      singleQuote: language == "javascript" || language == "typescript",
       quoteProps: "as-needed" as const,
       trailingComma: "es5" as const,
       bracketSpacing: true,
       bracketSameLine: false,
       arrowParens: "avoid" as const,
     };
-
     return await prettier.format(code, options);
   }, [tabSize, insertSpaces]);
-
   // Handle format code action
   const handleFormatCode = useCallback(async () => {
     if (!activeTab || !isFormatSupported()) {
@@ -162,9 +143,7 @@ export default function CodeEditorComponent() {
       toast.error(`Code formatting is not yet supported for ${config?.displayName || 'this language'}`);
       return;
     }
-
     setIsFormatting(true);
-
     try {
       const formattedCode = await formatCode(activeTab.code, activeTab.language);
       updateTab(activeTab.id, { code: formattedCode });
@@ -176,9 +155,7 @@ export default function CodeEditorComponent() {
       setIsFormatting(false);
     }
   }, [activeTab, formatCode, updateTab, isFormatSupported]);
-
-  // Fixed keyboard shortcut for formatting
-
+  // Fixed keyboard shortcut for formatting (global, for non-editor focus)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Only handle if not focused on Monaco editor to prevent conflicts
@@ -186,29 +163,24 @@ export default function CodeEditorComponent() {
       if (target.closest('.monaco-editor')) {
         return; // Let Monaco handle it
       }
-
       // Ctrl+Shift+F or Cmd+Shift+F for format
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
         event.preventDefault();
         handleFormatCode();
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleFormatCode]);
-
   // Handle format on save
   useEffect(() => {
     if (formatOnSave && activeTab && isFormatSupported()) {
       const timeoutId = setTimeout(() => {
         handleFormatCode();
       }, 1000); // Format 1 second after last edit
-
       return () => clearTimeout(timeoutId);
     }
   }, [activeTab?.code, formatOnSave, handleFormatCode, isFormatSupported]);
-
   // Handle relative line numbers
   useEffect(() => {
     if (editorRef.current) {
@@ -217,7 +189,6 @@ export default function CodeEditorComponent() {
       });
     }
   }, [relativeLineNumbers]);
-
   // Handle word wrap
   useEffect(() => {
     if (editorRef.current) {
@@ -226,7 +197,6 @@ export default function CodeEditorComponent() {
       });
     }
   }, [wordWrap]);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -239,7 +209,6 @@ export default function CodeEditorComponent() {
       }
     };
   }, []);
-
   if (!activeTab) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -249,14 +218,11 @@ export default function CodeEditorComponent() {
       </div>
     );
   }
-
   const config = getLanguageConfig(activeTab.language);
-
   return (
     <div className="h-full flex flex-col relative">
       {/* Pass format handler to Tabs component */}
       <Tabs onFormatCode={handleFormatCode} isFormatting={isFormatting} />
-
       {/* Vim Status Bar */}
       {isVimModeEnabled && (
         <div className="flex items-center justify-between px-4 py-1 bg-muted/30 border-b text-xs">
@@ -267,7 +233,6 @@ export default function CodeEditorComponent() {
           />
         </div>
       )}
-
       <div className="flex-1 overflow-hidden">
         <MonacoEditor
           key={editorKey} // Force re-mount when vim mode changes
@@ -298,29 +263,36 @@ export default function CodeEditorComponent() {
           }}
           onMount={async (editor) => {
             editorRef.current = editor;
-
             // Initialize vim mode if enabled
             if (isVimModeEnabled && statusBarRef.current) {
               await loadVimMode();
               if (initVimMode) {
                 try {
                   vimModeRef.current = initVimMode(editor, statusBarRef.current);
-
                   // Add custom mappings after initialization
                   setTimeout(() => {
                     if (VimMode?.Vim?.map) {
                       VimMode.Vim.map('jj', '<Esc>', 'insert');
                       VimMode.Vim.map('jk', '<Esc>', 'insert');
-
                     }
                   }, 100);
+                  // Fix: Add format shortcut for Vim mode using Vim's key mapping
+                  // This will map <leader>f in normal mode to trigger formatting
+                  setTimeout(() => {
+                    if (VimMode?.Vim?.defineEx) {
+                      // :Format command in Vim
+                      VimMode.Vim.defineEx('Format', '', function (_cm: any, _input: any) {
+                        handleFormatCode();
+                      });
+                    }
+                  }, 200);
                 } catch (error) {
                   console.error("Error initializing vim mode:", error);
                 }
               }
             }
-
             // Fixed keyboard shortcut for formatting with correct Monaco key codes
+            // This works for non-vim mode and for Monaco's own keybindings
             editor.addCommand(
               // Monaco.KeyMod.CtrlCmd | Monaco.KeyMod.Shift | Monaco.KeyCode.KeyF
               (1 << 11) | (1 << 10) | 36, // CtrlCmd + Shift + F

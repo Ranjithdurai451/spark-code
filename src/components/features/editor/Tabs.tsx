@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Plus, X, Edit2, Code, MoreVertical, Code2 } from "lucide-react";
+import { Plus, X, Edit2, Code, MoreVertical, Code2, FileText, Copy, Check } from "lucide-react";
 import { useState } from "react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useDocumentationGenerator } from "./useDocumentationGenerator";
 
 // Validation function for filename
 function validateFileName(name: string, language: Language): string | null {
@@ -48,6 +49,7 @@ interface TabsProps {
 }
 
 export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
+  const { generateDocumentation, isGeneratingDocs } = useDocumentationGenerator();
   const { tabs, activeTabId, setActiveTabId, addTab, removeTab, updateTab, isFormatSupported } =
     useEditorStore();
   const [showNewDialog, setShowNewDialog] = useState(false);
@@ -58,8 +60,46 @@ export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
   const [newLang, setNewLang] = useState<Language>(languages[0].name);
   const [error, setError] = useState<string | null>(null);
 
+  // Copy button state
+  const [isCopying, setIsCopying] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const activeConfig = activeTab ? getLanguageConfig(activeTab.language) : null;
+
+  // Copy to clipboard function
+  const handleCopyCode = async () => {
+    if (!activeTab || !activeTab.code) return;
+
+    try {
+      setIsCopying(true);
+      await navigator.clipboard.writeText(activeTab.code);
+      setCopySuccess(true);
+
+      // Reset success state after 2 seconds
+      setTimeout(() => {
+        setCopySuccess(false);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Failed to copy code:', error);
+      // Fallback for older browsers
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = activeTab.code;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (fallbackError) {
+        console.error('Fallback copy also failed:', fallbackError);
+      }
+    } finally {
+      setIsCopying(false);
+    }
+  };
 
   const handleAddTab = () => {
     const validationError = validateFileName(newName.trim(), newLang);
@@ -167,6 +207,44 @@ export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
     return "Format Code (Ctrl+Shift+F)";
   };
 
+  const getDocumentationTooltipContent = () => {
+    if (!activeTab) {
+      return "No active file";
+    }
+
+    if (isGeneratingDocs) {
+      return "Generating documentation...";
+    }
+
+    if (!activeTab.code || activeTab.code.trim().length < 20) {
+      return "Write some code first to generate documentation";
+    }
+
+    return "Generate AI Documentation with TC/SC analysis ";
+  };
+
+  const getCopyTooltipContent = () => {
+    if (!activeTab) {
+      return "No active file";
+    }
+
+    if (isCopying) {
+      return "Copying code...";
+    }
+
+    if (copySuccess) {
+      return "Code copied to clipboard!";
+    }
+
+    if (!activeTab.code || activeTab.code.trim().length === 0) {
+      return "No code to copy";
+    }
+
+    return "Copy code to clipboard ";
+  };
+
+  const canGenerateDocumentation = activeTab && activeTab.code && activeTab.code.trim().length >= 20;
+  const canCopyCode = activeTab && activeTab.code && activeTab.code.trim().length > 0;
   const formatSupported = isFormatSupported();
 
   return (
@@ -266,8 +344,77 @@ export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
             <Plus size={16} />
           </button>
 
-          {/* Format Code Button - Integrated in tabs area with better disabled state */}
+          {/* Action buttons - Copy, AI Docs, and Format */}
           <div className="ml-auto flex items-center px-2">
+            {/* Copy Code Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="inline-block">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={canCopyCode ? handleCopyCode : undefined}
+                    disabled={isCopying || !canCopyCode}
+                    className={`h-7 px-2 text-xs transition-all duration-200 ${canCopyCode
+                      ? "opacity-70 hover:opacity-100 hover:bg-accent/60 cursor-pointer"
+                      : "opacity-40 cursor-not-allowed hover:bg-transparent"
+                      }`}
+                    style={!canCopyCode ? { pointerEvents: 'none' } : {}}
+                  >
+                    {isCopying ? (
+                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    ) : copySuccess ? (
+                      <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </Button>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-[200px]">
+                <div className="text-center">
+                  {getCopyTooltipContent()}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* AI Documentation Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="inline-block">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={canGenerateDocumentation ? generateDocumentation : undefined}
+                    disabled={isGeneratingDocs || !canGenerateDocumentation}
+                    className={`h-7 px-3 text-xs transition-all duration-200 ${canGenerateDocumentation
+                      ? "opacity-70 hover:opacity-100 hover:bg-accent/60 cursor-pointer"
+                      : "opacity-40 cursor-not-allowed hover:bg-transparent"
+                      }`}
+                    style={!canGenerateDocumentation ? { pointerEvents: 'none' } : {}}
+                  >
+                    {isGeneratingDocs ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                        {/* <span>Documenting...</span> */}
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="w-3 h-3 mr-2" />
+                        {/* <span>AI Docs</span> */}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs max-w-[250px]">
+                <div className="text-center">
+                  {getDocumentationTooltipContent()}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Format Code Button */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="inline-block">
@@ -303,6 +450,7 @@ export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
         </div>
       </div>
 
+      {/* Rest of your dialogs remain the same */}
       {/* New Tab Dialog */}
       <Dialog open={showNewDialog} onOpenChange={(open) => !open && resetNewDialog()}>
         <DialogContent className="sm:max-w-md">

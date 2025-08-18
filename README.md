@@ -66,7 +66,7 @@ To get started with SparkCode, follow these steps:
     ```
 
     You can obtain a Gemini API key from [Google AI Studio](https://aistudio.google.com/).
-    For Judge0, you can sign up for an API key on [RapidAPI](https://rapidapi.com/judge0/api/judge0-ce/).
+    For Judge0, you can sign up for an API key on [RapidAPI](https://rapidapi.com/judge0-official/api/judge0-ce).
 
 4.  **Run the development server:**
     ```bash

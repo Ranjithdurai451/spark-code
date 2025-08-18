@@ -1727,6 +1727,7 @@ export async function POST(req: NextRequest) {
       expectedOutput: testCase.output,
       passed,
       error,
+      fullCode:executableCode,
       
       // Execution Details
       language,
