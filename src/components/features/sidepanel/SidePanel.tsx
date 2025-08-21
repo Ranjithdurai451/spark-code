@@ -19,21 +19,25 @@ import { ContextMenuSeparator } from "@radix-ui/react-context-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Simplified error parser
-function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
-    // console.log("error", error);
-    if (!error) return { message: 'An unexpected error occurred' };
-    if (typeof error === 'string') return { message: error };
-    if (error instanceof Error) return { message: error.message };
-    if (typeof error === 'object') {
-        // console.log("Test")
-        // console.log("error", error);
-        const msg = error.message || error.error || 'An unexpected error occurred';
-        return { message: msg, suggestion: error.suggestion, category: error.category };
-    }
-    return { message: 'An unexpected error occurred' };
+// function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
+//     // console.log("error", error);
+//     if (!error) return { message: 'An unexpected error occurred' };
+//     if (typeof error === 'string') return { message: error };
+//     if (error instanceof Error) return { message: error.message };
+//     if (typeof error === 'object') {
+//         // console.log("Test")
+//         // console.log("error", error);
+//         const msg = error.message || error.error || 'An unexpected error occurred';
+//         return { message: msg, suggestion: error.suggestion, category: error.category };
+//     }
+//     return { message: 'An unexpected error occurred' };
+// }
+interface SidePanelProps {
+    isVisible: boolean;
+    showPanel: () => void;
 }
 
-export default function SidePanel() {
+export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
     const { activeTabId, tabs } = useEditorStore();
     const [running, setRunning] = useState(false);
     const [output, setOutput] = useState("");
@@ -179,11 +183,14 @@ export default function SidePanel() {
             const key = event.key.toLowerCase();
 
             if (event.altKey && !event.ctrlKey && !event.metaKey) {
+                // ## CHANGE: This logic is updated to show the panel if it's not visible ##
                 switch (key) {
                     case 'e':
                         event.preventDefault();
                         event.stopPropagation();
                         if (!running && tab) {
+                            if (!isVisible) showPanel(); // Show panel if hidden
+                            setActivePanel("output");
                             handleRun();
                         }
                         break;
@@ -191,6 +198,8 @@ export default function SidePanel() {
                         event.preventDefault();
                         event.stopPropagation();
                         if (!isAnalyzing && tab) {
+                            if (!isVisible) showPanel(); // Show panel if hidden
+                            setActivePanel("analysis");
                             handleAnalyze();
                         }
                         break;
@@ -198,15 +207,16 @@ export default function SidePanel() {
                         event.preventDefault();
                         event.stopPropagation();
                         if (!isGeneratingTests && tab) {
+                            if (!isVisible) showPanel(); // Show panel if hidden
+                            setActivePanel("testcases");
                             handleGenerateTests();
                         }
                         break;
                 }
-            }
-            else if (key === 'escape') {
-                event.preventDefault();
-                event.stopPropagation();
+            } else if (key === 'escape') {
                 if (activePanel) {
+                    event.preventDefault();
+                    event.stopPropagation();
                     setActivePanel(null);
                 }
             }
@@ -214,7 +224,7 @@ export default function SidePanel() {
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [running, isAnalyzing, isGeneratingTests, tab, activePanel]);
+    }, [running, isAnalyzing, isGeneratingTests, tab, activePanel, isVisible, showPanel]);
 
     const clearOutput = () => setOutput("");
     const clearAnalysis = () => {

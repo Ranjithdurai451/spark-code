@@ -1,506 +1,898 @@
-import { useEditorStore, languages, Language, getLanguageConfig } from "@/components/features/editor/editorStore";
-import { Button } from "@/components/ui/button";
-import { DialogHeader } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Plus, X, Edit2, Code, MoreVertical, Code2, FileText, Copy, Check } from "lucide-react";
-import { useState } from "react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+/* -------------------------------------------------------------
+   components/features/editor/Tabs.tsx
+   Enhanced version with much better UI/UX - COMPLETE
+   ------------------------------------------------------------- */
+
+"use client";
+
+import { useState, useMemo, useEffect } from "react";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
+import {
+  useEditorStore,
+  languages,
+  Language
+} from "@/components/features/editor/editorStore";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  SelectSeparator
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipProvider,
+  TooltipTrigger,
+  TooltipContent
+} from "@/components/ui/tooltip";
+
+import GitHubFileBrowser from "./GithubFileBroswer";
 import { useDocumentationGenerator } from "./useDocumentationGenerator";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
-// Validation function for filename
-function validateFileName(name: string, language: Language): string | null {
+import {
+  Plus,
+  X,
+  Edit2,
+  Code,
+  MoreVertical,
+  Code2,
+  FileText,
+  Copy,
+  Check,
+  UploadCloud,
+  FolderPlus,
+  AlertCircle,
+  Github,
+  Info,
+  FolderOpen,
+  Folder,
+  ExternalLink,
+  Loader2,
+  RotateCcw,
+  ChevronDown,
+  File,
+  Settings,
+  Menu,
+  Maximize2
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+
+/* ─────────────────────────────────────────────────────────── */
+
+const fileErr = (name: string, lang: Language) => {
   if (!name.trim()) return "Filename cannot be empty";
-
-  const config = languages.find((l) => l.name === language);
-  if (!config) return "Invalid language selected";
-
-  const expectedExtension = config.extension;
-
-  // Check if filename ends with correct extension
-  if (!name.endsWith(`.${expectedExtension}`)) {
-    return `Filename must end with .${expectedExtension}`;
-  }
-
-  // For Java, check if first letter is capitalized
-  if (language === "java") {
-    const baseName = name.slice(0, name.lastIndexOf(`.${expectedExtension}`));
-    if (baseName.length === 0 || baseName[0] !== baseName[0].toUpperCase()) {
-      return "Java class name must start with a capital letter";
-    }
-  }
-
-  // For TypeScript, check if it's a valid identifier
-  if (language === "typescript") {
-    const baseName = name.slice(0, name.lastIndexOf(`.${expectedExtension}`));
-    if (baseName.length === 0 || !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(baseName)) {
-      return "TypeScript filename must be a valid identifier";
-    }
-  }
-
+  if (name.includes("/") || name.includes("\\")) return "Filename cannot contain slashes";
+  if (name.length > 100) return "Filename too long";
   return null;
-}
+};
 
-interface TabsProps {
+const cfg = (l: Language) => languages.find(x => x.name === l)!;
+const suggested = (l: Language) => cfg(l).filename;
+
+/* ─────────────────────────────────────────────────────────── */
+
+interface Props {
   onFormatCode: () => void;
   isFormatting: boolean;
 }
 
-export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
+interface FolderItem {
+  path: string;
+  name: string;
+  depth: number;
+  hasChildren: boolean;
+}
+
+/* ────────────────────────────  Re-usable error card  */
+function ErrorCard({
+  error,
+  title,
+  onRetry,
+  onClear,
+  isRetrying = false
+}: {
+  error: string;
+  title: string;
+  onRetry?: () => void;
+  onClear?: () => void;
+  isRetrying?: boolean;
+}) {
+  return (
+    <Card className="border-destructive/50 bg-destructive/5 dark:bg-destructive/10">
+      <CardContent className="p-3">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h4 className="font-medium text-sm text-destructive mb-1">
+              {title}
+            </h4>
+            <p className="text-xs text-muted-foreground mb-2 break-words">
+              {error}
+            </p>
+
+            {(onRetry || onClear) && (
+              <div className="flex gap-2">
+                {onRetry && (
+                  <Button
+                    onClick={onRetry}
+                    variant="destructive"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={isRetrying}
+                  >
+                    <RotateCcw className="w-3 h-3 mr-1" />
+                    {isRetrying ? "Retrying…" : "Retry"}
+                  </Button>
+                )}
+                {onClear && (
+                  <Button
+                    onClick={onClear}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────── */
+
+export default function Tabs({ onFormatCode, isFormatting }: Props) {
+  /* ---------------------- global store -------------------- */
+  const queryClient = useQueryClient();
+  const {
+    tabs,
+    activeTabId,
+    setActiveTabId,
+    addTab,
+    removeTab,
+    updateTab,
+    isFormatSupported,
+    githubToken,
+    githubRepo,
+    githubUserName
+  } = useEditorStore();
+
   const { generateDocumentation, isGeneratingDocs } = useDocumentationGenerator();
-  const { tabs, activeTabId, setActiveTabId, addTab, removeTab, updateTab, isFormatSupported } =
-    useEditorStore();
-  const [showNewDialog, setShowNewDialog] = useState(false);
-  const [showRenameDialog, setShowRenameDialog] = useState(false);
-  const [showLanguageDialog, setShowLanguageDialog] = useState(false);
-  const [selectedTabId, setSelectedTabId] = useState<string>("");
+  const activeTab = tabs.find(t => t.id === activeTabId);
+
+  /* ------------------------- UI state --------------------- */
+  const [showNew, setShowNew] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [showLang, setShowLang] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+
   const [newName, setNewName] = useState("");
   const [newLang, setNewLang] = useState<Language>(languages[0].name);
-  const [error, setError] = useState<string | null>(null);
+  const [target, setTarget] = useState("");
+  const [err, setErr] = useState<string | null>(null);
 
-  // Copy button state
-  const [isCopying, setIsCopying] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+  /* save dialog */
+  const [saveTopic, setSaveTopic] = useState("");
+  const [isNewFolder, setIsNewFolder] = useState(false);
+  const [customFolder, setCustom] = useState("");
+  const [saveName, setSaveName] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const activeConfig = activeTab ? getLanguageConfig(activeTab.language) : null;
+  /* copy state */
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Copy to clipboard function
-  const handleCopyCode = async () => {
-    if (!activeTab || !activeTab.code) return;
-
-    try {
-      setIsCopying(true);
-      await navigator.clipboard.writeText(activeTab.code);
-      setCopySuccess(true);
-
-      // Reset success state after 2 seconds
-      setTimeout(() => {
-        setCopySuccess(false);
-      }, 2000);
-
-    } catch (error) {
-      console.error('Failed to copy code:', error);
-      // Fallback for older browsers
-      try {
-        const textArea = document.createElement('textarea');
-        textArea.value = activeTab.code;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      } catch (fallbackError) {
-        console.error('Fallback copy also failed:', fallbackError);
+  /* -------------------------------------------------------- */
+  /* ----------- GitHub repo folders query ------------------ */
+  const {
+    data: foldersData,
+    isLoading: loadingFolders,
+    error: foldersError,
+    refetch: refetchFolders
+  } = useQuery({
+    queryKey: ["github-folders", githubToken, githubRepo],
+    queryFn: async () => {
+      if (!githubToken || !githubRepo) {
+        throw new Error("GitHub token and repository are required");
       }
-    } finally {
-      setIsCopying(false);
-    }
-  };
 
-  const handleAddTab = () => {
-    const validationError = validateFileName(newName.trim(), newLang);
-    if (validationError) {
-      setError(validationError);
-      return;
+      const response = await fetch("/api/github-tree", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${githubToken}`
+        },
+        body: JSON.stringify({ repo: githubRepo })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        let errorMessage = errorData.error || "Failed to fetch folders";
+
+        if (response.status === 401) {
+          errorMessage = "Invalid GitHub token. Please reconnect in Settings.";
+        } else if (response.status === 403) {
+          errorMessage = "Access denied. Check repository permissions or rate limits.";
+        } else if (response.status === 404) {
+          errorMessage = "Repository not found. Verify the repository name.";
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      return response.json();
+    },
+    enabled: !!(githubToken && githubRepo && showSave),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    retry: (count, error: any) => {
+      if (
+        error.message.includes("Invalid GitHub token") ||
+        error.message.includes("Access denied")
+      )
+        return false;
+      return count < 2;
+    }
+  });
+
+  /*  flatten + normalize repo tree  */
+  const processedFolders = useMemo<FolderItem[]>(() => {
+    if (!foldersData?.files) return [];
+
+    const folderSet = new Set<string>();
+    for (const file of foldersData.files) {
+      if (file.type === "tree") {
+        folderSet.add(file.path);
+      } else {
+        const parts = file.path.split("/");
+        for (let i = 0; i < parts.length - 1; i++) {
+          folderSet.add(parts.slice(0, i + 1).join("/"));
+        }
+      }
     }
 
-    const config = languages.find((l) => l.name === newLang)!;
+    const folders = Array.from(folderSet).sort();
+    return folders.map(fp => {
+      const parts = fp.split("/");
+      return {
+        path: fp,
+        name: parts[parts.length - 1],
+        depth: parts.length - 1,
+        hasChildren: folders.some(f => f !== fp && f.startsWith(fp + "/"))
+      };
+    });
+  }, [foldersData]);
+
+  const hasFolders = processedFolders.length > 0;
+
+  /* auto-switch to "new folder" mode when repo empty */
+  useEffect(() => {
+    if (!hasFolders) {
+      setIsNewFolder(true);
+      setSaveTopic(""); // nothing to pre-select
+    }
+  }, [hasFolders]);
+
+  /* ----------------- save-to-GitHub mutation -------------- */
+  const saveToGitHubMutation = useMutation({
+    mutationFn: async (data: {
+      repo: string;
+      path: string;
+      content: string;
+      message: string;
+    }) => {
+      const response = await fetch("/api/github-save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${githubToken}`
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+      return response.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["github-folders", githubToken, githubRepo]
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["github-tree", githubToken, githubRepo]
+      });
+
+      const ghUrl = `https://github.com/${githubUserName}/${githubRepo}/blob/main/${variables.path}`;
+      setSaveSuccess(ghUrl);
+
+      toast.success("File saved to GitHub!", {
+        style: {
+          background: "hsl(var(--background))",
+          color: "hsl(var(--foreground))",
+          border: "1px solid hsl(var(--border))"
+        }
+      });
+
+      setTimeout(() => {
+        setShowSave(false);
+        resetSaveDialog();
+      }, 3000);
+    },
+    onError: (e: any) =>
+      toast.error(`Failed to save: ${e.message}`, {
+        style: {
+          background: "hsl(var(--background))",
+          color: "hsl(var(--destructive))",
+          border: "1px solid hsl(var(--destructive))"
+        }
+      })
+  });
+
+  /* -------------- file-list handlers ---------------------- */
+  const createFile = () => {
+    const e = fileErr(newName.trim(), newLang);
+    if (e) return setErr(e);
+
     addTab({
       name: newName.trim(),
       language: newLang,
-      code: config.defaultCode,
+      code: cfg(newLang).defaultCode
     });
-    setShowNewDialog(false);
+    setShowNew(false);
     setNewName("");
-    setError(null);
+    setErr(null);
+    toast.success("New file created!");
   };
 
-  const handleRename = () => {
-    if (!selectedTabId) return;
+  const rename = () => {
+    const t = tabs.find(t => t.id === target);
+    if (!t) return;
+    const e = fileErr(newName.trim(), t.language);
+    if (e) return setErr(e);
 
-    const currentTab = tabs.find(tab => tab.id === selectedTabId);
-    if (!currentTab) return;
+    updateTab(target, { name: newName.trim() });
+    setShowRename(false);
+    setNewName("");
+    setErr(null);
+    toast.success("File renamed!");
+  };
 
-    const validationError = validateFileName(newName.trim(), currentTab.language);
-    if (validationError) {
-      setError(validationError);
+  const changeLanguage = () => {
+    updateTab(target, {
+      language: newLang,
+      name: cfg(newLang).filename,
+      code: cfg(newLang).defaultCode
+    });
+    setShowLang(false);
+    toast.success("Language changed!");
+  };
+
+  /* ------------------ clipboard --------------------------- */
+  const handleCopy = async () => {
+    if (!activeTab?.code) return;
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(activeTab.code);
+      setCopied(true);
+      toast.success("Code copied to clipboard!");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy code");
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  /* ------------------ save dialog helpers ---------------- */
+  const saveToGitHub = () => {
+    if (!activeTab || !githubToken || !githubRepo) return;
+
+    const fileName = (saveName || activeTab.name).trim();
+    if (!fileName) {
+      toast.error("Filename required");
       return;
     }
 
-    updateTab(selectedTabId, { name: newName.trim() });
-    setShowRenameDialog(false);
-    setNewName("");
-    setError(null);
-  };
+    let filePath: string;
 
-  const handleLanguageChange = () => {
-    if (!selectedTabId) return;
-    const config = languages.find((l) => l.name === newLang)!;
-    updateTab(selectedTabId, {
-      language: newLang,
-      name: config.filename,
-      code: config.defaultCode,
+    if (isNewFolder) {
+      const folder = customFolder.trim();
+      if (!folder) {
+        toast.error("Folder name required");
+        return;
+      }
+      filePath = `${folder}/${fileName}`;
+    } else if (!saveTopic) {
+      // Root folder case
+      filePath = fileName;
+    } else {
+      filePath = `${saveTopic}/${fileName}`;
+    }
+
+    saveToGitHubMutation.mutate({
+      repo: githubRepo,
+      path: filePath,
+      content: activeTab.code,
+      message: saveTopic
+        ? `Add ${saveTopic} solution: ${fileName}`
+        : `Add solution: ${fileName}`
     });
-    setShowLanguageDialog(false);
   };
 
-  const openRenameDialog = (tabId: string, currentName: string) => {
-    setSelectedTabId(tabId);
-    setNewName(currentName);
-    setError(null);
-    setShowRenameDialog(true);
+  const resetSaveDialog = () => {
+    setSaveTopic(""); // Default to root if no folders selected
+    setIsNewFolder(false);
+    setCustom("");
+    setSaveName("");
+    setSaveSuccess(null);
   };
 
-  const openLanguageDialog = (tabId: string, currentLang: Language) => {
-    setSelectedTabId(tabId);
-    setNewLang(currentLang);
-    setShowLanguageDialog(true);
+  const openSaveDialog = () => {
+    setSaveName(activeTab?.name ?? "");
+    setSaveSuccess(null);
+    setShowSave(true);
   };
 
-  const resetNewDialog = () => {
-    setShowNewDialog(false);
-    setNewName("");
-    setNewLang(languages[0].name);
-    setError(null);
-  };
-
-  const resetRenameDialog = () => {
-    setShowRenameDialog(false);
-    setNewName("");
-    setSelectedTabId("");
-    setError(null);
-  };
-
-  // Generate suggested filename based on language
-  const getSuggestedFilename = (language: Language) => {
-    const config = languages.find((l) => l.name === language);
-    return config?.filename || "";
-  };
-
-  // Update suggested filename when language changes in new dialog
-  const handleLanguageChangeInNewDialog = (language: Language) => {
-    setNewLang(language);
-    if (!newName || newName === getSuggestedFilename(newLang)) {
-      setNewName(getSuggestedFilename(language));
-    }
-    if (error) setError(null);
-  };
-
-  // Get tooltip content based on format support and state
-  const getTooltipContent = () => {
-    if (!activeConfig) {
-      return "No active file";
-    }
-
-    if (isFormatting) {
-      return "Formatting code...";
-    }
-
-    if (!activeConfig.formatSupported) {
-      return `Code formatting not yet supported for ${activeConfig.displayName}`;
-    }
-
-    return "Format Code (Ctrl+Shift+F)";
-  };
-
-  const getDocumentationTooltipContent = () => {
-    if (!activeTab) {
-      return "No active file";
-    }
-
-    if (isGeneratingDocs) {
-      return "Generating documentation...";
-    }
-
-    if (!activeTab.code || activeTab.code.trim().length < 20) {
-      return "Write some code first to generate documentation";
-    }
-
-    return "Generate AI Documentation with TC/SC analysis ";
-  };
-
-  const getCopyTooltipContent = () => {
-    if (!activeTab) {
-      return "No active file";
-    }
-
-    if (isCopying) {
-      return "Copying code...";
-    }
-
-    if (copySuccess) {
-      return "Code copied to clipboard!";
-    }
-
-    if (!activeTab.code || activeTab.code.trim().length === 0) {
-      return "No code to copy";
-    }
-
-    return "Copy code to clipboard ";
-  };
-
-  const canGenerateDocumentation = activeTab && activeTab.code && activeTab.code.trim().length >= 20;
-  const canCopyCode = activeTab && activeTab.code && activeTab.code.trim().length > 0;
-  const formatSupported = isFormatSupported();
+  /* ──────────────────────────────────────────────────────── */
+  /*                       ENHANCED JSX                       */
+  /* ──────────────────────────────────────────────────────── */
 
   return (
     <TooltipProvider>
-      <div className="relative border-b border-border bg-muted/50">
-        <div className="flex overflow-x-auto scrollbar-thin scrollbar-thumb-muted/60 scrollbar-track-transparent">
-          {tabs.map((tab) => {
-            const config = languages.find((l) => l.name === tab.language);
-            return (
-              <div
-                key={tab.id}
-                className={`relative flex items-center group px-3 min-w-[140px] max-w-[220px] h-9
-                  transition-all duration-200 cursor-pointer border-r border-border/50
-                  ${activeTabId === tab.id
-                    ? "bg-background text-foreground font-medium shadow-sm"
-                    : "text-muted-foreground bg-muted/30 hover:bg-muted/70 hover:text-foreground"
-                  }`}
-                onClick={() => setActiveTabId(tab.id)}
-              >
-                <span className="overflow-hidden text-sm text-ellipsis whitespace-nowrap flex-1 mr-2">
-                  {tab.name}
-                </span>
+      {/* ===== MODERN TABS HEADER BAR ===== */}
+      <div className="border-b bg-gradient-to-r from-background via-background to-background/95 backdrop-blur-sm">
+        <div className="flex items-center h-12 px-4">
+          {/* === LEFT: Enhanced File Tabs + Dropdown === */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
 
-                <span className="text-xs opacity-60 capitalize px-1 py-0.5 bg-muted/60 rounded text-[10px] font-medium mr-1">
-                  {config?.displayName || tab.language}
-                </span>
+            {/* Horizontal Tab Pills (for quick switching) */}
+            <div className="flex items-center gap-4 min-w-0 ">
+              <div className="flex items-center gap-4 py-2">
+                {tabs
+                  .filter(tab => tab.id === activeTabId)
+                  .map((tab) => {
+                    const isActive = tab.id === activeTabId;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setActiveTabId(tab.id)}
+                        className={cn(
+                          "group flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-0  whitespace-nowrap",
+                          isActive
+                            ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-2 h-2 rounded-full shrink-0",
+                          isActive ? "bg-primary" : "bg-muted-foreground/40"
+                        )} />
+                        <span >{tab.name}</span>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100  transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-3 w-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" side="right">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTarget(tab.id);
+                                setNewName(tab.name);
+                                setErr(null);
+                                setShowRename(true);
+                              }}
+                            >
+                              <Edit2 className="mr-2 h-3 w-3" /> Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTarget(tab.id);
+                                setNewLang(tab.language);
+                                setShowLang(true);
+                              }}
+                            >
+                              <Code className="mr-2 h-3 w-3" /> Language
+                            </DropdownMenuItem>
+                            {tabs.length > 1 && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeTab(tab.id);
+                                  }}
+                                  className="text-red-500 focus:text-red-500"
+                                >
+                                  <X className="mr-2 h-3 w-3" /> Close
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </button>
+                    );
+                  })}
+              </div>
 
-                {/* Three dots dropdown menu */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="ml-1 p-1 rounded hover:bg-accent/60 opacity-0 group-hover:opacity-100 transition-all duration-200 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
+              {/* All Files Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-2 border-dashed shrink-0"
+                  >
+                    <Menu className="w-4 h-4" />
+                    {tabs.length > 1 && (
+                      <Badge variant="secondary" className="ml-1 text-[10px] px-1">
+                        +{tabs.length - 1}
+                      </Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-80 p-0">
+                  {/* Clean Header */}
+                  <div className="px-4 py-3 border-b bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-sm">All Files</h4>
+                        <p className="text-xs text-muted-foreground">
+                          {tabs.length} open • Click to switch
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => {
+                          setNewLang(languages[0].name);
+                          setNewName(suggested(languages[0].name));
+                          setErr(null);
+                          setShowNew(true);
+                        }}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Smooth Scrollable File List */}
+                  <div className="max-h-[400px] overflow-y-auto">
+                    <div className="p-2 space-y-1">
+                      {tabs.map((tab) => {
+                        const isActive = tab.id === activeTabId;
+                        return (
+                          <div
+                            key={tab.id}
+                            onClick={() => setActiveTabId(tab.id)}
+                            className={cn(
+                              "group flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition-all",
+                              isActive
+                                ? "bg-primary/10 text-primary border border-primary/20"
+                                : "hover:bg-accent/50 text-foreground/80 hover:text-foreground"
+                            )}
+                          >
+                            <div className={cn(
+                              "w-2 h-2 rounded-full shrink-0",
+                              isActive ? "bg-primary" : "bg-muted-foreground/40"
+                            )} />
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm truncate">
+                                  {tab.name}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] px-1.5 py-0 font-medium shrink-0"
+                                >
+                                  {cfg(tab.language).displayName}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {tab.code.split('\n').length} lines
+                              </p>
+                            </div>
+
+                            {/* Always Visible Action Buttons */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <MoreVertical className="h-3 w-3" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" side="right">
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTarget(tab.id);
+                                      setNewName(tab.name);
+                                      setErr(null);
+                                      setShowRename(true);
+                                    }}
+                                  >
+                                    <Edit2 className="mr-2 h-3 w-3" /> Rename
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTarget(tab.id);
+                                      setNewLang(tab.language);
+                                      setShowLang(true);
+                                    }}
+                                  >
+                                    <Code className="mr-2 h-3 w-3" /> Language
+                                  </DropdownMenuItem>
+                                  {tabs.length > 1 && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          removeTab(tab.id);
+                                        }}
+                                        className="text-red-500 focus:text-red-500"
+                                      >
+                                        <X className="mr-2 h-3 w-3" /> Close
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+
+                              {tabs.length > 1 && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 opacity-60 hover:opacity-100 hover:text-destructive"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeTab(tab.id);
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Clean Footer */}
+                  <div className="border-t p-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-muted-foreground hover:text-foreground h-8"
+                      onClick={() => {
+                        setNewLang(languages[0].name);
+                        setNewName(suggested(languages[0].name));
+                        setErr(null);
+                        setShowNew(true);
                       }}
                     >
-                      <MoreVertical size={12} />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem
-                      onClick={() => openRenameDialog(tab.id, tab.name)}
-                      className="cursor-pointer"
-                    >
-                      <Edit2 className="mr-2 h-4 w-4" />
-                      Rename File
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => openLanguageDialog(tab.id, tab.language)}
-                      className="cursor-pointer"
-                    >
-                      <Code className="mr-2 h-4 w-4" />
-                      Change Language
-                    </DropdownMenuItem>
-                    {tabs.length > 1 && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => removeTab(tab.id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20 focus:text-red-700 focus:bg-red-50 dark:focus:bg-red-950/20 cursor-pointer"
-                        >
-                          <X className="mr-2 h-4 w-4" />
-                          Close File
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      <Plus className="mr-2 h-3 w-3" />
+                      New File
+                    </Button>
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
 
-                {/* Close button */}
-                {tabs.length > 1 && (
-                  <button
-                    className="ml-1 opacity-0 group-hover:opacity-100 transition-all duration-200 p-1 rounded hover:bg-red-100 hover:text-red-700 dark:hover:bg-red-950/30 dark:hover:text-red-400 focus-visible:opacity-100"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeTab(tab.id);
-                    }}
-                    title="Close file"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
+          {/* === RIGHT: Clean Action Bar === */}
+          <div className="flex items-center gap-1 ml-4">
+            <GitHubFileBrowser />
 
-          {/* Add new tab button */}
-          <button
-            className="ml-2 px-3 flex items-center justify-center h-9 bg-background hover:bg-accent/70 transition-colors duration-200 border border-border/50 hover:border-border rounded-sm"
-            onClick={() => {
-              setNewName(getSuggestedFilename(languages[0].name));
-              setShowNewDialog(true);
-            }}
-            title="Create new file"
-          >
-            <Plus size={16} />
-          </button>
-
-          {/* Action buttons - Copy, AI Docs, and Format */}
-          <div className="ml-auto flex items-center px-2">
-            {/* Copy Code Button */}
+            {/* Copy */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="inline-block">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={canCopyCode ? handleCopyCode : undefined}
-                    disabled={isCopying || !canCopyCode}
-                    className={`h-7 px-2 text-xs transition-all duration-200 ${canCopyCode
-                      ? "opacity-70 hover:opacity-100 hover:bg-accent/60 cursor-pointer"
-                      : "opacity-40 cursor-not-allowed hover:bg-transparent"
-                      }`}
-                    style={!canCopyCode ? { pointerEvents: 'none' } : {}}
-                  >
-                    {isCopying ? (
-                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    ) : copySuccess ? (
-                      <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
-                    ) : (
-                      <Copy className="w-3 h-3" />
-                    )}
-                  </Button>
-                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!activeTab?.code || copying}
+                  onClick={handleCopy}
+                  className="h-8 w-8 p-0"
+                >
+                  {copying ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : copied ? (
+                    <Check className="h-3 w-3 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-3 w-3" />
+                  )}
+                </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-                <div className="text-center">
-                  {getCopyTooltipContent()}
-                </div>
-              </TooltipContent>
+              <TooltipContent side="bottom">Copy code</TooltipContent>
             </Tooltip>
 
-            {/* AI Documentation Button */}
+            {/* Format */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="inline-block">
+                <div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={canGenerateDocumentation ? generateDocumentation : undefined}
-                    disabled={isGeneratingDocs || !canGenerateDocumentation}
-                    className={`h-7 px-3 text-xs transition-all duration-200 ${canGenerateDocumentation
-                      ? "opacity-70 hover:opacity-100 hover:bg-accent/60 cursor-pointer"
-                      : "opacity-40 cursor-not-allowed hover:bg-transparent"
-                      }`}
-                    style={!canGenerateDocumentation ? { pointerEvents: 'none' } : {}}
-                  >
-                    {isGeneratingDocs ? (
-                      <>
-                        <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-                        {/* <span>Documenting...</span> */}
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="w-3 h-3 mr-2" />
-                        {/* <span>AI Docs</span> */}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[250px]">
-                <div className="text-center">
-                  {getDocumentationTooltipContent()}
-                </div>
-              </TooltipContent>
-            </Tooltip>
-
-            {/* Format Code Button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="inline-block">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={formatSupported ? onFormatCode : undefined}
-                    disabled={isFormatting || !formatSupported}
-                    className={`h-7 px-2 text-xs transition-all duration-200 ${formatSupported
-                      ? "opacity-70 hover:opacity-100 hover:bg-accent/60 cursor-pointer"
-                      : "opacity-40 cursor-not-allowed hover:bg-transparent"
-                      }`}
-                    style={!formatSupported ? { pointerEvents: 'none' } : {}}
+                    disabled={isFormatting || !isFormatSupported()}
+                    onClick={onFormatCode}
+                    className="h-8 w-8 p-0"
                   >
                     {isFormatting ? (
-                      <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
-                      <Code2
-                        className={`w-3 h-3 transition-all duration-200 ${!formatSupported ? 'text-muted-foreground/50' : ''
-                          }`}
-                      />
+                      <Code2 className="h-3 w-3" />
                     )}
                   </Button>
                 </div>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[200px]">
-                <div className="text-center">
-                  {getTooltipContent()}
+              <TooltipContent side="bottom">
+                {isFormatting
+                  ? "Formatting..."
+                  : !isFormatSupported()
+                    ? "Formatting not yet supported for this language"
+                    : "Format code"}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Documentation */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!activeTab?.code || activeTab.code.trim().length < 20 || isGeneratingDocs}
+                  onClick={generateDocumentation}
+                  className="h-8 w-8 p-0"
+                >
+                  {isGeneratingDocs ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <FileText className="h-3 w-3" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Generate docs</TooltipContent>
+            </Tooltip>
+
+            {/* Save to GitHub */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!activeTab || !githubToken || !githubRepo}
+                    onClick={openSaveDialog}
+                    className="h-8 w-8 p-0"
+                  >
+                    <UploadCloud className="h-3 w-3" />
+                  </Button>
                 </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {!githubToken
+                  ? "Connect GitHub in Settings"
+                  : !githubRepo
+                    ? "Select repo"
+                    : !activeTab
+                      ? "No file open"
+                      : "Save to GitHub"}
               </TooltipContent>
             </Tooltip>
           </div>
         </div>
       </div>
 
-      {/* Rest of your dialogs remain the same */}
-      {/* New Tab Dialog */}
-      <Dialog open={showNewDialog} onOpenChange={(open) => !open && resetNewDialog()}>
+      {/********************************************************************
+          ALL dialogs (keeping the same dialogs but with minor improvements)
+      ********************************************************************/}
+
+      {/* ── NEW FILE ─────────────────────────────────────────── */}
+      <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New File</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Create New File
+            </DialogTitle>
           </DialogHeader>
+
           <div className="flex flex-col gap-4">
+            {/* language */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Language</label>
+              <label className="text-sm font-medium">Language</label>
               <Select
                 value={newLang}
-                onValueChange={(value: Language) => handleLanguageChangeInNewDialog(value)}
+                onValueChange={v => {
+                  setNewLang(v as Language);
+                  setNewName(suggested(v as Language));
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {languages.map(({ name, displayName }) => (
-                    <SelectItem key={name} value={name}>
-                      {displayName}
+                  {languages.map(lang => (
+                    <SelectItem key={lang.name} value={lang.name}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-primary/60" />
+                        {lang.displayName}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
+            {/* filename */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Filename</label>
+              <label className="text-sm font-medium">Filename</label>
               <Input
                 value={newName}
-                onChange={(e) => {
-                  setNewName(e.target.value);
-                  if (error) setError(null);
-                }}
-                placeholder={getSuggestedFilename(newLang)}
-                className={error ? "border-red-500 focus-visible:ring-red-500" : ""}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && createFile()}
+                placeholder="Enter filename..."
               />
-              {error && (
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
-                  <span className="w-1 h-1 bg-red-500 rounded-full"></span>
-                  {error}
-                </p>
+              {err && (
+                <div className="mt-2">
+                  <ErrorCard
+                    error={err}
+                    title="Invalid filename"
+                    onClear={() => setErr(null)}
+                  />
+                </div>
               )}
             </div>
-
+            {/* actions */}
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={resetNewDialog}>
+              <Button variant="outline" onClick={() => setShowNew(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleAddTab} className="min-w-20">
+              <Button onClick={createFile} disabled={!newName.trim()}>
+                <Plus className="h-4 w-4 mr-1" />
                 Create
               </Button>
             </div>
@@ -508,38 +900,39 @@ export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Rename Dialog */}
-      <Dialog open={showRenameDialog} onOpenChange={(open) => !open && resetRenameDialog()}>
+      {/* ── RENAME ───────────────────────────────────────────── */}
+      <Dialog open={showRename} onOpenChange={setShowRename}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Rename File</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit2 className="h-4 w-4" /> Rename File
+            </DialogTitle>
           </DialogHeader>
+
           <div className="flex flex-col gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">New filename</label>
+              <label className="text-sm font-medium">New filename</label>
               <Input
                 value={newName}
-                onChange={(e) => {
-                  setNewName(e.target.value);
-                  if (error) setError(null);
-                }}
-                placeholder="new filename"
-                autoFocus
-                className={error ? "border-red-500 focus-visible:ring-red-500" : ""}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && rename()}
+                placeholder="Enter new filename..."
               />
-              {error && (
-                <p className="text-sm text-red-600 dark:text-red-400 mt-1 flex items-center gap-1">
-                  <span className="w-1 h-1 bg-red-500 rounded-full"></span>
-                  {error}
-                </p>
-              )}
             </div>
+            {err && (
+              <ErrorCard
+                error={err}
+                title="Invalid filename"
+                onClear={() => setErr(null)}
+              />
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={resetRenameDialog}>
+              <Button variant="outline" onClick={() => setShowRename(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleRename} className="min-w-20">
+              <Button onClick={rename} disabled={!newName.trim()}>
+                <Edit2 className="h-4 w-4 mr-1" />
                 Rename
               </Button>
             </div>
@@ -547,48 +940,295 @@ export default function Tabs({ onFormatCode, isFormatting }: TabsProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Language Change Dialog */}
-      <Dialog open={showLanguageDialog} onOpenChange={setShowLanguageDialog}>
+      {/* ── CHANGE LANGUAGE ──────────────────────────────────── */}
+      <Dialog open={showLang} onOpenChange={setShowLang}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Change Language</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Code className="h-4 w-4" /> Change Language
+            </DialogTitle>
           </DialogHeader>
+
           <div className="flex flex-col gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Select language</label>
-              <Select
-                value={newLang}
-                onValueChange={(value: Language) => setNewLang(value)}
-              >
+              <label className="text-sm font-medium">Select language</label>
+              <Select value={newLang} onValueChange={v => setNewLang(v as Language)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {languages.map(({ name, displayName }) => (
-                    <SelectItem key={name} value={name}>
-                      {displayName}
+                  {languages.map(lang => (
+                    <SelectItem key={lang.name} value={lang.name}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-primary/60" />
+                        {lang.displayName}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-md">
-              <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
-                ⚠️ This will reset the code to the default template
-              </p>
-            </div>
+            <Card className="border-amber-500/20 bg-amber-50/50 dark:bg-amber-950/20">
+              <CardContent className="p-3">
+                <div className="flex gap-2">
+                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    Changing language will replace current code with the default template for the selected language.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowLanguageDialog(false)}
-              >
+              <Button variant="outline" onClick={() => setShowLang(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleLanguageChange} className="min-w-20">
-                Change
+              <Button onClick={changeLanguage}>
+                <Code className="h-4 w-4 mr-1" />
+                Change Language
               </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── SAVE TO GITHUB ───────────────────────────────────── */}
+      <Dialog open={showSave} onOpenChange={setShowSave}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UploadCloud className="h-5 w-5" />
+              Save to GitHub
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 py-4">
+            {/* repo info */}
+            <div className="bg-muted/50 rounded-lg p-4 border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-md bg-primary/10">
+                    <Github className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">Repository</p>
+                    <p className="text-xs text-muted-foreground">
+                      github.com/{githubUserName}/{githubRepo}
+                    </p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300">
+                  <Check className="h-3 w-3 mr-1" />
+                  Connected
+                </Badge>
+              </div>
+            </div>
+
+            {/* choose folder */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Destination folder</label>
+
+              {loadingFolders ? (
+                <div className="h-10 flex items-center justify-center border rounded-md bg-muted/20">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading folders...</span>
+                </div>
+              ) : foldersError ? (
+                <ErrorCard
+                  error={foldersError.message}
+                  title="Failed to load folders"
+                  onRetry={refetchFolders}
+                  isRetrying={loadingFolders}
+                />
+              ) : (
+                /* ============ Always show root + folders + new folder option ============ */
+                <Select
+                  value={isNewFolder ? "new-folder" : (saveTopic || "root")}
+                  onValueChange={v => {
+                    if (v === "new-folder") {
+                      setIsNewFolder(true);
+                      setSaveTopic("");
+                    } else if (v === "root") {
+                      setIsNewFolder(false);
+                      setSaveTopic("");
+                    } else {
+                      setIsNewFolder(false);
+                      setSaveTopic(v);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-10 w-full">
+                    <SelectValue placeholder="Select destination..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {/* Root folder option */}
+                    <SelectItem value="root">
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-4 w-4 text-blue-600" />
+                        <span className="font-medium">/ (Root folder)</span>
+                      </div>
+                    </SelectItem>
+
+                    {/* Existing folders */}
+                    {processedFolders.length > 0 && (
+                      <>
+                        <SelectSeparator />
+                        {processedFolders.map(f => (
+                          <SelectItem key={f.path} value={f.path}>
+                            <div
+                              style={{ marginLeft: f.depth * 16 }}
+                              className="flex items-center gap-2"
+                            >
+                              {f.hasChildren ? (
+                                <FolderOpen className="h-4 w-4 text-primary" />
+                              ) : (
+                                <Folder className="h-4 w-4 text-primary" />
+                              )}
+                              <span className="truncate">
+                                {f.depth > 0 ? f.path : f.name}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+
+                    {/* New folder option */}
+                    <SelectSeparator />
+                    <SelectItem value="new-folder">
+                      <div className="flex items-center gap-2">
+                        <FolderPlus className="h-4 w-4 text-emerald-600" />
+                        <span className="text-emerald-600">Create new folder</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* new-folder input */}
+            {isNewFolder && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">New folder name</label>
+                <Input
+                  value={customFolder}
+                  onChange={e => setCustom(e.target.value)}
+                  placeholder="e.g., algorithms, data-structures"
+                  className="h-10"
+                />
+              </div>
+            )}
+
+            {/* filename */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Filename</label>
+              <Input
+                value={saveName}
+                onChange={e => setSaveName(e.target.value)}
+                placeholder={activeTab?.name || "solution.java"}
+                className="h-10"
+              />
+            </div>
+
+            {/* path preview */}
+            <div className="bg-accent/20 rounded-lg p-4 border border-accent/30">
+              <div className="flex gap-3">
+                <Info className="h-4 w-4 text-accent-foreground/70 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-accent-foreground mb-1">
+                    Save path preview
+                  </p>
+                  <code className="text-xs bg-background/80 px-2 py-1.5 rounded border break-all block">
+                    {(() => {
+                      if (isNewFolder) {
+                        return (customFolder || "new-folder") + "/" + (saveName || activeTab?.name || "filename");
+                      } else if (!saveTopic) {
+                        // Root folder case
+                        return saveName || activeTab?.name || "filename";
+                      } else {
+                        return saveTopic + "/" + (saveName || activeTab?.name || "filename");
+                      }
+                    })()}
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            {/* success message */}
+            {saveSuccess && (
+              <Card className="border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/20">
+                <CardContent className="p-4">
+                  <div className="flex gap-3">
+                    <Check className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 mb-3">
+                        File saved successfully to GitHub!
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 hover:border-emerald-700"
+                        onClick={() => window.open(saveSuccess!, "_blank")}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-2" />
+                        View on GitHub
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* error message */}
+            {saveToGitHubMutation.isError && (
+              <ErrorCard
+                error={saveToGitHubMutation.error?.message || "Save failed"}
+                title="Failed to save file"
+                onRetry={saveToGitHub}
+                onClear={saveToGitHubMutation.reset}
+                isRetrying={saveToGitHubMutation.isPending}
+              />
+            )}
+
+            {/* actions */}
+            <div className="flex items-center justify-between pt-4 border-t">
+              <div className="text-xs text-muted-foreground flex items-center gap-2">
+                <FileText className="h-3 w-3" />
+                <span>
+                  {(activeTab?.code.split("\n").length || 0)} lines • {(activeTab?.code.length || 0)} characters
+                </span>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowSave(false)}
+                  disabled={saveToGitHubMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={saveToGitHub}
+                  disabled={
+                    saveToGitHubMutation.isPending ||
+                    !saveName.trim() ||
+                    (isNewFolder && !customFolder.trim()) ||
+                    !!saveSuccess
+                  }
+                >
+                  {saveToGitHubMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-4 w-4 mr-2" />
+                      Save to GitHub
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

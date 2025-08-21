@@ -1312,6 +1312,13 @@ function generateTypeScriptInputs(input: any[]): string {
   }).join('\n');
 }
 
+function forceMainClass(src: string): string {
+  const re = /\bpublic\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/;
+  return re.test(src)
+    ? src.replace(re, (_, name) =>
+        name === "Main" ? `public class Main` : `public class Main`)
+    : src;                       // no public class found → leave unchanged
+}
 // Enhanced Judge0 execution with retry logic
 async function executeCode({ code, language }: { code: string; language: string }, retries = 2) {
   const langId = LANGUAGE_MAP[language.toLowerCase()];
@@ -1319,6 +1326,8 @@ async function executeCode({ code, language }: { code: string; language: string 
 
   console.log(`🚀 Executing ${language} code on Judge0 (attempt ${3 - retries}/3)...`);
   console.log(`📝 Code to execute (${code.length} chars):`, code.substring(0, 500) + "...");
+const patchedCode =
+    language.toLowerCase() === "java" ? forceMainClass(code) : code;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -1330,7 +1339,7 @@ async function executeCode({ code, language }: { code: string; language: string 
           "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
         },
         body: JSON.stringify({
-          source_code: code,
+          source_code: patchedCode,
           language_id: langId,
           stdin: "",
           expected_output: "",

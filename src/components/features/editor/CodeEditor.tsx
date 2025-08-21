@@ -155,23 +155,23 @@ export default function CodeEditorComponent() {
       setIsFormatting(false);
     }
   }, [activeTab, formatCode, updateTab, isFormatSupported]);
-  // Fixed keyboard shortcut for formatting (global, for non-editor focus)
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Only handle if not focused on Monaco editor to prevent conflicts
-      const target = event.target as HTMLElement;
-      if (target.closest('.monaco-editor')) {
-        return; // Let Monaco handle it
-      }
-      // Ctrl+Shift+F or Cmd+Shift+F for format
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
-        event.preventDefault();
-        handleFormatCode();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleFormatCode]);
+  // REMOVE: Fixed keyboard shortcut for formatting (global, for non-editor focus)
+  // useEffect(() => {
+  //   const handleKeyDown = (event: KeyboardEvent) => {
+  //     // Only handle if not focused on Monaco editor to prevent conflicts
+  //     const target = event.target as HTMLElement;
+  //     if (target.closest('.monaco-editor')) {
+  //       return; // Let Monaco handle it
+  //     }
+  //     // Ctrl+Shift+F or Cmd+Shift+F for format
+  //     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') {
+  //       event.preventDefault();
+  //       handleFormatCode();
+  //     }
+  //   };
+  //   document.addEventListener('keydown', handleKeyDown);
+  //   return () => document.removeEventListener('keydown', handleKeyDown);
+  // }, [handleFormatCode]);
   // Handle format on save
   useEffect(() => {
     if (formatOnSave && activeTab && isFormatSupported()) {
@@ -263,14 +263,15 @@ export default function CodeEditorComponent() {
           }}
           onMount={async (editor) => {
             editorRef.current = editor;
-            editor.onKeyDown(e => {
-              const isFormat =
-                (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyF";
-              if (isFormat) {
-                e.preventDefault();        // ① block vim
-                handleFormatCode();        // ② run your formatter
-              }
-            });
+            // REMOVE: Ctrl+Shift+F or Cmd+Shift+F to format inside Monaco
+            // editor.onKeyDown(e => {
+            //   const isFormat =
+            //     (e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyF";
+            //   if (isFormat) {
+            //     e.preventDefault();        // ① block vim
+            //     handleFormatCode();        // ② run your formatter
+            //   }
+            // });
             // Initialize vim mode if enabled
             if (isVimModeEnabled && statusBarRef.current) {
               await loadVimMode();
@@ -286,14 +287,14 @@ export default function CodeEditorComponent() {
                   }, 100);
                   // Fix: Add format shortcut for Vim mode using Vim's key mapping
                   // This will map <leader>f in normal mode to trigger formatting
-                  // setTimeout(() => {
-                  //   if (VimMode?.Vim?.defineEx) {
-                  //     // :Format command in Vim
-                  //     VimMode.Vim.defineEx('Format', '', function (_cm: any, _input: any) {
-                  //       handleFormatCode();
-                  //     });
-                  //   }
-                  // }, 200);
+                  setTimeout(() => {
+                    if (VimMode?.Vim?.defineEx) {
+                      // :Format command in Vim
+                      VimMode.Vim.defineEx('Format', '', function (_cm: any, _input: any) {
+                        handleFormatCode();
+                      });
+                    }
+                  }, 200);
                   // inside onMount – before initVimMode(...)
 
 
@@ -302,15 +303,15 @@ export default function CodeEditorComponent() {
                 }
               }
             }
-            // Fixed keyboard shortcut for formatting with correct Monaco key codes
+            // REMOVE: Fixed keyboard shortcut for formatting with correct Monaco key codes
             // This works for non-vim mode and for Monaco's own keybindings
-            editor.addCommand(
-              // Monaco.KeyMod.CtrlCmd | Monaco.KeyMod.Shift | Monaco.KeyCode.KeyF
-              (1 << 11) | (1 << 10) | 36, // CtrlCmd + Shift + F
-              () => {
-                handleFormatCode();
-              }
-            );
+            // editor.addCommand(
+            //   // Monaco.KeyMod.CtrlCmd | Monaco.KeyMod.Shift | Monaco.KeyCode.KeyF
+            //   (1 << 11) | (1 << 10) | 36, // CtrlCmd + Shift + F
+            //   () => {
+            //     handleFormatCode();
+            //   }
+            // );
 
           }}
           onChange={(value) => {

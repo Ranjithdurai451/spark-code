@@ -146,6 +146,12 @@ export interface Tab {
  */
 interface EditorState {
   // Tab Management
+  githubToken: string | null;
+  githubRepo: string;              
+  githubUserName:string; // default repo name
+  setGithubToken: (t: string | null) => void;
+  setGithubRepo: (r: string) => void;
+  setGithubUserName: (r: string) => void;
   /** Array of open editor tabs */
   tabs: Tab[];
   /** ID of the currently active tab */
@@ -250,7 +256,13 @@ export const useEditorStore = create<EditorState>()(
       tabSize: 4,
       insertSpaces: true,
       formatOnSave: false,
-
+       githubToken: null,
+      githubRepo: "",
+      githubUserName:"",
+ setGithubToken: (t) => set({ githubToken: t }),
+      setGithubRepo: (r) => set({ githubRepo: r || "" }), 
+      setGithubUserName: (r) => set({ githubUserName: r || "" }), 
+      
       // Tab Management Actions
       setTabs: (tabs) => set({ tabs }),
       
@@ -367,17 +379,21 @@ export const useEditorStore = create<EditorState>()(
     {
       name: "leetcode-editor-store",
       partialize: (state) => ({
-        tabs: state.tabs,
-        activeTabId: state.activeTabId,
-        fontSize: state.fontSize,
-        isVimModeEnabled: state.isVimModeEnabled,
-        relativeLineNumbers: state.relativeLineNumbers,
-        wordWrap: state.wordWrap,
-        theme: state.theme,
-        showInvisibles: state.showInvisibles,
-        tabSize: state.tabSize,
-        insertSpaces: state.insertSpaces,
-        formatOnSave: state.formatOnSave,
+       tabs: state.tabs,
+  activeTabId: state.activeTabId,
+  fontSize: state.fontSize,
+  isVimModeEnabled: state.isVimModeEnabled,
+  relativeLineNumbers: state.relativeLineNumbers,
+  wordWrap: state.wordWrap,
+  theme: state.theme,
+  showInvisibles: state.showInvisibles,
+  tabSize: state.tabSize,
+  insertSpaces: state.insertSpaces,
+  formatOnSave: state.formatOnSave,
+  // Add GitHub state to persistence
+  githubToken: state.githubToken,
+  githubRepo: state.githubRepo,
+  githubUserName: state.githubUserName,
       }),
     }
   )

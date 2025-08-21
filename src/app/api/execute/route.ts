@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
         // Execute code
         const result = await executeCode({
             code,
+            language,
+
             languageId,
             input: input || ""
         });
@@ -61,15 +63,27 @@ export async function POST(req: NextRequest) {
     }
 }
 
+
+function forceMainClass(src: string): string {
+  const re = /\bpublic\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/;
+  return re.test(src)
+    ? src.replace(re, (_, name) =>
+        name === "Main" ? `public class Main` : `public class Main`)
+    : src;                       // no public class found → leave unchanged
+}
 async function executeCode({ 
     code, 
     languageId, 
+    language,
     input 
 }: { 
+    language:string;
     code: string; 
     languageId: number; 
     input: string; 
 }) {
+     const patchedCode =
+    language.toLowerCase() === "java" ? forceMainClass(code) : code;
     const response = await fetch(`${JUDGE0_URL}?base64_encoded=false&wait=true`, {
         method: "POST",
         headers: {
@@ -78,9 +92,10 @@ async function executeCode({
             "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
         },
         body: JSON.stringify({
-            source_code: code,
+            source_code: patchedCode,
             language_id: languageId,
             stdin: input,
+            
         }),
     });
 
