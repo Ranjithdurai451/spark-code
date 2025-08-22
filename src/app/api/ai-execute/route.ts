@@ -769,22 +769,35 @@ function generateEnhancedFallback(userCode: string, language: string, testCase: 
 
 // Enhanced Java wrapper generator with data structure support
 function generateJavaWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
-  const hasListNode = analysis.dataStructures.has('ListNode');
-  const hasTreeNode = analysis.dataStructures.has('TreeNode');
-  
+  // Extract user imports if present
+  const userImports: string[] = [];
+  const importRegex = /^import\s+[\w.*]+;\s*$/gm;
+  let match: RegExpExecArray | null;
+  while ((match = importRegex.exec(userCode)) !== null) {
+    userImports.push(match[0].trim());
+  }
+
+  // Remove user imports from userClassBody to avoid duplication
+  let userClassBody = userCode.replace(importRegex, '').trim();
+
+  // Always include java.util.* for helpers, but avoid duplicates
+  const importsSet = new Set<string>(userImports);
+  importsSet.add("import java.util.*;");
+
+  // Data structure class definitions (ListNode, TreeNode, etc.)
   let dataStructureClasses = '';
   let helperMethods = '';
-  
-  if (hasListNode) {
+
+  if (analysis.dataStructures.has('ListNode')) {
     dataStructureClasses += `
-class ListNode {
-    int val;
-    ListNode next;
-    ListNode() {}
-    ListNode(int val) { this.val = val; }
-    ListNode(int val, ListNode next) { this.val = val; this.next = next; }
-}`;
-    
+    static class ListNode {
+        int val;
+        ListNode next;
+        ListNode() {}
+        ListNode(int val) { this.val = val; }
+        ListNode(int val, ListNode next) { this.val = val; this.next = next; }
+    }`;
+
     helperMethods += `
     static ListNode arrayToList(int[] arr) {
         if (arr == null || arr.length == 0) return null;
@@ -796,9 +809,9 @@ class ListNode {
         }
         return head;
     }
-    
+
     static int[] listToArray(ListNode head) {
-        java.util.List<Integer> result = new java.util.ArrayList<>();
+        List<Integer> result = new ArrayList<>();
         while (head != null) {
             result.add(head.val);
             head = head.next;
@@ -806,25 +819,25 @@ class ListNode {
         return result.stream().mapToInt(i -> i).toArray();
     }`;
   }
-  
-  if (hasTreeNode) {
+
+  if (analysis.dataStructures.has('TreeNode')) {
     dataStructureClasses += `
-class TreeNode {
-    int val;
-    TreeNode left;
-    TreeNode right;
-    TreeNode() {}
-    TreeNode(int val) { this.val = val; }
-    TreeNode(int val, TreeNode left, TreeNode right) {
-        this.val = val; this.left = left; this.right = right;
-    }
-}`;
-    
+    static class TreeNode {
+        int val;
+        TreeNode left;
+        TreeNode right;
+        TreeNode() {}
+        TreeNode(int val) { this.val = val; }
+        TreeNode(int val, TreeNode left, TreeNode right) {
+            this.val = val; this.left = left; this.right = right;
+        }
+    }`;
+
     helperMethods += `
     static TreeNode arrayToTree(Integer[] arr) {
         if (arr == null || arr.length == 0 || arr[0] == null) return null;
         TreeNode root = new TreeNode(arr[0]);
-        java.util.Queue<TreeNode> queue = new java.util.LinkedList<>();
+        Queue<TreeNode> queue = new LinkedList<>();
         queue.offer(root);
         int i = 1;
         while (!queue.isEmpty() && i < arr.length) {
@@ -843,24 +856,53 @@ class TreeNode {
         return root;
     }`;
   }
-  
+
+  // Find the user's class name (assume always public, any name)
+  const classNameMatch = userClassBody.match(/public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/);
+  const userClassName = classNameMatch ? classNameMatch[1] : "Solution";
+
+  // Remove the user's public class wrapper, but keep the code inside
+  if (classNameMatch) {
+    userClassBody = userClassBody.replace(
+      new RegExp(`public\\s+class\\s+${userClassName}\\s*\\{`),
+      ''
+    );
+    userClassBody = userClassBody.replace(/}\s*$/, '');
+  }
+
+  // Prepare input and output conversion code
   const inputConversion = generateJavaInputConversion(input, analysis);
   const outputConversion = generateJavaOutputConversion(analysis);
-  
+
+  // Compose the final Java code
   return `
+${Array.from(importsSet).join('\n')}
+
+/**
+ * LeetCode-like problem function for analysis and test generation.
+ * 
+ * Write your solution as a static method below.
+ * 
+ * Example:
+ * // Given an array nums, return all unique triplets [nums[i], nums[j], nums[k]] such that i != j != k and nums[i] + nums[j] + nums[k] == 0.
+ * // Input: [-1,0,1,2,-1,-4]
+ * // Output: [[-1,-1,2],[-1,0,1]]
+ */
+
+public class ${userClassName} {
 ${dataStructureClasses}
 
-public class Main {
-    ${userCode.replace(/public class Main \{/, '').replace(/}\s*$/, '')}
-    
-    ${helperMethods}
-    
+${userClassBody}
+
+${helperMethods}
+
     public static void main(String[] args) {
-        Main solution = new Main();
+        ${userClassName} solution = new ${userClassName}();
         ${inputConversion}
         ${outputConversion}
     }
-}`.trim();
+}
+`.trim();
 }
 
 // Enhanced Python wrapper generator
