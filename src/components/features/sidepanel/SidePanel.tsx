@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ContextMenuSeparator } from "@radix-ui/react-context-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useCredentialsStore } from "@/components/root/credentialsStore";
 
 // Simplified error parser
 // function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
@@ -38,6 +39,7 @@ interface SidePanelProps {
 }
 
 export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
+    const { clearApiKeys, geminiApiKey, judge0ApiKey } = useCredentialsStore();
     const { activeTabId, tabs } = useEditorStore();
     const [running, setRunning] = useState(false);
     const [output, setOutput] = useState("");
@@ -55,6 +57,9 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         api: '/api/analyze',
         onError: async (error) => {
             const errorContent = JSON.parse(error.message);
+            if (errorContent.error === "NO_API_KEY") {
+                clearApiKeys()
+            }
             setAnalysisError({
                 message: errorContent.error || "An unexpected error occurred",
                 suggestion: errorContent.suggestion || "Please try again",
@@ -73,12 +78,15 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         api: '/api/generate-tests',
         onError: (error) => {
             const errorContent = JSON.parse(error.message);
-            console.log("errorContent", errorContent)
+            if (errorContent.error === "NO_API_KEY") {
+                clearApiKeys()
+            }
             setTestError({
                 message: errorContent.message || "An unexpected error occurred",
                 suggestion: errorContent.details || "Please try again",
                 category: errorContent.category || "error"
             });
+
         },
         onFinish: (message) => {
             console.log('Test generation completed:', message);
@@ -120,7 +128,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await append({
             role: "user",
             content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "comprehensive" } });
+        }, { body: { code, language, geminiApiKey: geminiApiKey?.value } });
     }
 
     async function handleGenerateTests() {
@@ -148,7 +156,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await appendTest({
             role: "user",
             content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "testcases" } });
+        }, { body: { code, language, type: "testcases", geminiApiKey: geminiApiKey?.value } });
 
     }
 
@@ -165,7 +173,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         try {
             const res = await fetch("/api/execute", {
                 method: "POST",
-                body: JSON.stringify({ code, language }),
+                body: JSON.stringify({ code, language, judge0ApiKey: judge0ApiKey?.value }),
                 headers: { "Content-Type": "application/json" },
             });
             const data = await res.json();
@@ -262,7 +270,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await append({
             role: "user",
             content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "comprehensive" } });
+        }, { body: { code, language, geminiApiKey: geminiApiKey?.value } });
 
     };
 
@@ -291,7 +299,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await appendTest({
             role: "user",
             content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "testcases" } });
+        }, { body: { code, language, type: "testcases", geminiApiKey: geminiApiKey?.value } });
     };
 
     const actions = [

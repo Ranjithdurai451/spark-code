@@ -2,10 +2,7 @@ import { NextRequest } from "next/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
 import { extractFunctionInfo } from "@/lib/extractor";
-
-const gemini = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
+import { getApiKeys } from "@/lib/getApiKeys";
 
 // Enhanced analysis prompt with better structure
 const CODE_ANALYSIS_PROMPT = `
@@ -91,40 +88,51 @@ interface FunctionInfo {
 
 // Enhanced function extraction with better pattern detection
 
-
-
 // Enhanced language detection
 function detectLanguage(code: string): string {
   const patterns = [
-    { regex: /package\s+main|func\s+\w+.*\{|fmt\./, lang: 'go' },
-    { regex: /public\s+class|import\s+java\.|System\.out/, lang: 'java' },
-    { regex: /#include.*<.*>.*std::|vector<|cout\s*<</, lang: 'cpp' },
-    { regex: /#include.*<.*>.*printf|malloc\s*\(/, lang: 'c' },
-    { regex: /def\s+\w+.*:|import\s+\w+|:\s*$/m, lang: 'python' },
-    { regex: /using\s+System|Console\.WriteLine|public\s+class/, lang: 'csharp' },
-    { regex: /:\s*(string|number|boolean|\w+\[\])\s*[=\)\{]|interface\s+\w+/, lang: 'typescript' },
-    { regex: /function\s+\w+|const\s+\w+\s*=.*=>|console\.log/, lang: 'javascript' }
+    { regex: /package\s+main|func\s+\w+.*\{|fmt\./, lang: "go" },
+    { regex: /public\s+class|import\s+java\.|System\.out/, lang: "java" },
+    { regex: /#include.*<.*>.*std::|vector<|cout\s*<</, lang: "cpp" },
+    { regex: /#include.*<.*>.*printf|malloc\s*\(/, lang: "c" },
+    { regex: /def\s+\w+.*:|import\s+\w+|:\s*$/m, lang: "python" },
+    {
+      regex: /using\s+System|Console\.WriteLine|public\s+class/,
+      lang: "csharp",
+    },
+    {
+      regex: /:\s*(string|number|boolean|\w+\[\])\s*[=\)\{]|interface\s+\w+/,
+      lang: "typescript",
+    },
+    {
+      regex: /function\s+\w+|const\s+\w+\s*=.*=>|console\.log/,
+      lang: "javascript",
+    },
   ];
 
   for (const { regex, lang } of patterns) {
     if (regex.test(code)) return lang;
   }
 
-  return 'javascript';
+  return "javascript";
 }
 
 // Enhanced code quality assessment
-function assessCodeQuality(code: string, language: string): { score: number; level: string } {
+function assessCodeQuality(
+  code: string,
+  language: string
+): { score: number; level: string } {
   let score = 5; // Base score
 
   // Complexity analysis
-  const complexity = (code.match(/\b(if|while|for|switch|try|catch)\b/g) || []).length;
+  const complexity = (code.match(/\b(if|while|for|switch|try|catch)\b/g) || [])
+    .length;
   if (complexity > 10) score -= 2;
   else if (complexity > 5) score -= 1;
   else if (complexity >= 2) score += 1;
 
   // Function length (sweet spot is 10-50 lines)
-  const lines = code.split('\n').length;
+  const lines = code.split("\n").length;
   if (lines >= 10 && lines <= 50) score += 1;
   else if (lines > 100) score -= 2;
 
@@ -144,7 +152,8 @@ function assessCodeQuality(code: string, language: string): { score: number; lev
 
   score = Math.max(1, Math.min(10, score));
 
-  const level = score >= 8 ? 'advanced' : score >= 6 ? 'intermediate' : 'novice';
+  const level =
+    score >= 8 ? "advanced" : score >= 6 ? "intermediate" : "novice";
   return { score, level };
 }
 
@@ -153,7 +162,30 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const { messages, code, language, type = 'comprehensive' } = await req.json();
+    const {
+      messages,
+      code,
+      language,
+      geminiApiKey: clientGeminiApiKey,
+    } = await req.json();
+    const keyInfo = await getApiKeys(req);
+    const geminiKey =
+      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
+    console.log(geminiKey);
+    // Check if key available
+    if (!geminiKey) {
+      return Response.json(
+        {
+          error: "NO_API_KEY",
+          message: keyInfo.error || "Gemini API key required",
+          mode: keyInfo.mode,
+        },
+        { status: 401 }
+      );
+    }
+    const gemini = createGoogleGenerativeAI({
+      apiKey: geminiKey,
+    });
 
     // Extract code from request
     let codeToAnalyze = code;
@@ -161,11 +193,13 @@ export async function POST(req: NextRequest) {
 
     if (!codeToAnalyze && Array.isArray(messages) && messages.length > 0) {
       const userMessage = messages[messages.length - 1];
-      const codeMatch = userMessage.content.match(/```(\w+)?\n?([\s\S]*?)```/) || 
-                       userMessage.content.match(/`([^`]{20,})`/);
-      
+      const codeMatch =
+        userMessage.content.match(/```(\w+)?\n?([\s\S]*?)```/) ||
+        userMessage.content.match(/`([^`]{20,})`/);
+
       if (codeMatch) {
-        detectedLanguage = codeMatch[1] || detectLanguage(codeMatch[2] || codeMatch[1]);
+        detectedLanguage =
+          codeMatch[1] || detectLanguage(codeMatch[2] || codeMatch[1]);
         codeToAnalyze = (codeMatch[2] || codeMatch[1]).trim();
       }
     }
@@ -175,11 +209,12 @@ export async function POST(req: NextRequest) {
       return new Response(
         JSON.stringify({
           error: "INSUFFICIENT_CODE",
-          message: "Please provide a substantial code snippet (at least 20 characters)",
+          message:
+            "Please provide a substantial code snippet (at least 20 characters)",
           suggestion: "Include a complete function or method implementation",
-          retryable: true
+          retryable: true,
         }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
@@ -189,18 +224,28 @@ export async function POST(req: NextRequest) {
 
     // Extract function information
     const functionInfo = extractFunctionInfo(codeToAnalyze, detectedLanguage);
-    
+
     if (!functionInfo.isValid) {
       return new Response(
         JSON.stringify({
           error: "NO_VALID_FUNCTION",
           message: `No complete function found in the ${detectedLanguage} code`,
-          suggestion: "Please provide code with at least one complete function implementation",
+          suggestion:
+            "Please provide code with at least one complete function implementation",
           detectedLanguage,
-          supportedLanguages: ["java", "javascript", "typescript", "python", "cpp", "c", "go", "csharp"],
-          retryable: true
+          supportedLanguages: [
+            "java",
+            "javascript",
+            "typescript",
+            "python",
+            "cpp",
+            "c",
+            "go",
+            "csharp",
+          ],
+          retryable: true,
         }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
@@ -213,22 +258,30 @@ export async function POST(req: NextRequest) {
       pattern: functionInfo.algorithmPattern,
       quality: `${quality.score}/10 (${quality.level})`,
       codeLength: codeToAnalyze.length,
-      processingTime: Date.now() - startTime
+      processingTime: Date.now() - startTime,
     });
 
     // Generate optimization example (basic template)
-    const optimizationExample = generateOptimizationExample(functionInfo, codeToAnalyze);
+    const optimizationExample = generateOptimizationExample(
+      functionInfo,
+      codeToAnalyze
+    );
 
     // Build analysis prompt
-    const analysisPrompt = CODE_ANALYSIS_PROMPT
-      .replace(/\{user_code\}/g, codeToAnalyze)
+    const analysisPrompt = CODE_ANALYSIS_PROMPT.replace(
+      /\{user_code\}/g,
+      codeToAnalyze
+    )
       .replace(/\{language\}/g, detectedLanguage)
       .replace(/\{function_signature\}/g, functionInfo.signature)
       .replace(/\{algorithm_pattern\}/g, functionInfo.algorithmPattern)
       .replace(/\{quality_score\}/g, quality.score.toString())
       .replace(/\{quality_level\}/g, quality.level)
       .replace(/\{optimization_example\}/g, optimizationExample)
-      .replace(/\{overall_summary\}/g, `demonstrates ${functionInfo.algorithmPattern} with ${quality.level} implementation quality`);
+      .replace(
+        /\{overall_summary\}/g,
+        `demonstrates ${functionInfo.algorithmPattern} with ${quality.level} implementation quality`
+      );
 
     // Stream the analysis
     const result = streamText({
@@ -239,42 +292,50 @@ export async function POST(req: NextRequest) {
     });
 
     const response = result.toDataStreamResponse();
-    
+
     // Add metadata headers
-    response.headers.set('X-Function-Name', functionInfo.name);
-    response.headers.set('X-Function-Language', detectedLanguage);
-    response.headers.set('X-Algorithm-Pattern', functionInfo.algorithmPattern);
-    response.headers.set('X-Quality-Score', quality.score.toString());
-    response.headers.set('X-Quality-Level', quality.level);
-    response.headers.set('X-Processing-Time', (Date.now() - startTime).toString());
+    response.headers.set("X-Function-Name", functionInfo.name);
+    response.headers.set("X-Function-Language", detectedLanguage);
+    response.headers.set("X-Algorithm-Pattern", functionInfo.algorithmPattern);
+    response.headers.set("X-Quality-Score", quality.score.toString());
+    response.headers.set("X-Quality-Level", quality.level);
+    response.headers.set(
+      "X-Processing-Time",
+      (Date.now() - startTime).toString()
+    );
 
     return response;
-
   } catch (error: any) {
     console.error("💥 Analysis Error:", {
       error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      processingTime: Date.now() - startTime
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      processingTime: Date.now() - startTime,
     });
 
     return new Response(
       JSON.stringify({
         error: "ANALYSIS_FAILED",
         message: "Failed to analyze the code",
-        details: process.env.NODE_ENV === 'development' ? error.message : "Internal processing error",
+        details:
+          process.env.NODE_ENV === "development"
+            ? error.message
+            : "Internal processing error",
         timestamp: new Date().toISOString(),
-        retryable: true
+        retryable: true,
       }),
-      { 
+      {
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { "Content-Type": "application/json" },
       }
     );
   }
 }
 
 // Generate basic optimization example
-function generateOptimizationExample(functionInfo: FunctionInfo, code: string): string {
+function generateOptimizationExample(
+  functionInfo: FunctionInfo,
+  code: string
+): string {
   const patterns = {
     linked_list_reversal: `// Optimized with clear variable names and comments
 ListNode prev = null;
@@ -305,9 +366,11 @@ while (left <= right) {
     else if (nums[mid] < target) left = mid + 1;
     else right = mid - 1;
 }
-return -1;`
+return -1;`,
   };
 
-  return patterns[functionInfo.algorithmPattern as keyof typeof patterns] || 
-    `// Consider optimizing the main logic here\n// Focus on reducing time/space complexity`;
+  return (
+    patterns[functionInfo.algorithmPattern as keyof typeof patterns] ||
+    `// Consider optimizing the main logic here\n// Focus on reducing time/space complexity`
+  );
 }

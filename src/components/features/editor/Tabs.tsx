@@ -1,11 +1,6 @@
-/* -------------------------------------------------------------
-   components/features/editor/Tabs.tsx
-   Enhanced version with much better UI/UX - COMPLETE
-   ------------------------------------------------------------- */
-
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import {
   useEditorStore,
@@ -67,18 +62,13 @@ import {
   ExternalLink,
   Loader2,
   RotateCcw,
-  ChevronDown,
-  File,
-  Settings,
-  Menu,
-  Maximize2
+  Menu
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+import { useCredentialsStore } from "@/components/root/credentialsStore";
 
 /* ─────────────────────────────────────────────────────────── */
 
@@ -121,15 +111,15 @@ function ErrorCard({
   isRetrying?: boolean;
 }) {
   return (
-    <Card className="border-destructive/50 bg-destructive/5 dark:bg-destructive/10">
+    <Card className="border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
       <CardContent className="p-3">
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-destructive mt-0.5 flex-shrink-0" />
+          <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm text-destructive mb-1">
+            <h4 className="font-medium text-sm text-red-500 mb-1">
               {title}
             </h4>
-            <p className="text-xs text-muted-foreground mb-2 break-words">
+            <p className="text-xs text-red-600 dark:text-red-400 mb-2 break-words">
               {error}
             </p>
 
@@ -138,9 +128,9 @@ function ErrorCard({
                 {onRetry && (
                   <Button
                     onClick={onRetry}
-                    variant="destructive"
+                    variant="outline"
                     size="sm"
-                    className="h-7 text-xs"
+                    className="h-7 text-xs border-red-300 text-red-500 hover:bg-red-50 hover:border-red-400 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
                     disabled={isRetrying}
                   >
                     <RotateCcw className="w-3 h-3 mr-1" />
@@ -150,9 +140,9 @@ function ErrorCard({
                 {onClear && (
                   <Button
                     onClick={onClear}
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="h-7 text-xs"
+                    className="h-7 text-xs text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                   >
                     Clear
                   </Button>
@@ -169,8 +159,10 @@ function ErrorCard({
 /* ─────────────────────────────────────────────────────────── */
 
 export default function Tabs({ onFormatCode, isFormatting }: Props) {
-  /* ---------------------- global store -------------------- */
+  /* ---------------------- global stores -------------------- */
   const queryClient = useQueryClient();
+
+  // Editor store for tabs
   const {
     tabs,
     activeTabId,
@@ -179,10 +171,14 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     removeTab,
     updateTab,
     isFormatSupported,
-    githubToken,
-    githubRepo,
-    githubUserName
   } = useEditorStore();
+
+  // GitHub credentials store 
+  const {
+    githubUser,
+    githubRepo,
+    isConnected,
+  } = useCredentialsStore();
 
   const { generateDocumentation, isGeneratingDocs } = useDocumentationGenerator();
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -217,17 +213,16 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     error: foldersError,
     refetch: refetchFolders
   } = useQuery({
-    queryKey: ["github-folders", githubToken, githubRepo],
+    queryKey: ["github-folders", githubRepo],
     queryFn: async () => {
-      if (!githubToken || !githubRepo) {
-        throw new Error("GitHub token and repository are required");
+      if (!githubRepo) {
+        throw new Error("GitHub repository is required");
       }
 
       const response = await fetch("/api/github-tree", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${githubToken}`
         },
         body: JSON.stringify({ repo: githubRepo })
       });
@@ -237,9 +232,9 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         let errorMessage = errorData.error || "Failed to fetch folders";
 
         if (response.status === 401) {
-          errorMessage = "Invalid GitHub token. Please reconnect in Settings.";
+          errorMessage = "Please sign in with GitHub again.";
         } else if (response.status === 403) {
-          errorMessage = "Access denied. Check repository permissions or rate limits.";
+          errorMessage = "Access denied. Check repository permissions.";
         } else if (response.status === 404) {
           errorMessage = "Repository not found. Verify the repository name.";
         }
@@ -249,12 +244,12 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
 
       return response.json();
     },
-    enabled: !!(githubToken && githubRepo && showSave),
+    enabled: !!(githubRepo && showSave && isConnected),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: (count, error: any) => {
       if (
-        error.message.includes("Invalid GitHub token") ||
+        error.message.includes("sign in") ||
         error.message.includes("Access denied")
       )
         return false;
@@ -296,7 +291,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
   useEffect(() => {
     if (!hasFolders) {
       setIsNewFolder(true);
-      setSaveTopic(""); // nothing to pre-select
+      setSaveTopic("");
     }
   }, [hasFolders]);
 
@@ -312,7 +307,6 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${githubToken}`
         },
         body: JSON.stringify(data)
       });
@@ -325,22 +319,16 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["github-folders", githubToken, githubRepo]
+        queryKey: ["github-folders", githubRepo]
       });
       queryClient.invalidateQueries({
-        queryKey: ["github-tree", githubToken, githubRepo]
+        queryKey: ["github-tree", githubRepo]
       });
 
-      const ghUrl = `https://github.com/${githubUserName}/${githubRepo}/blob/main/${variables.path}`;
+      const ghUrl = `https://github.com/${githubUser?.login}/${githubRepo}/blob/main/${variables.path}`;
       setSaveSuccess(ghUrl);
 
-      toast.success("File saved to GitHub!", {
-        style: {
-          background: "hsl(var(--background))",
-          color: "hsl(var(--foreground))",
-          border: "1px solid hsl(var(--border))"
-        }
-      });
+      toast.success("File saved to GitHub!");
 
       setTimeout(() => {
         setShowSave(false);
@@ -348,13 +336,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
       }, 3000);
     },
     onError: (e: any) =>
-      toast.error(`Failed to save: ${e.message}`, {
-        style: {
-          background: "hsl(var(--background))",
-          color: "hsl(var(--destructive))",
-          border: "1px solid hsl(var(--destructive))"
-        }
-      })
+      toast.error(`Failed to save: ${e.message}`)
   });
 
   /* -------------- file-list handlers ---------------------- */
@@ -414,7 +396,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
 
   /* ------------------ save dialog helpers ---------------- */
   const saveToGitHub = () => {
-    if (!activeTab || !githubToken || !githubRepo) return;
+    if (!activeTab || !githubRepo) return;
 
     const fileName = (saveName || activeTab.name).trim();
     if (!fileName) {
@@ -432,7 +414,6 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
       }
       filePath = `${folder}/${fileName}`;
     } else if (!saveTopic) {
-      // Root folder case
       filePath = fileName;
     } else {
       filePath = `${saveTopic}/${fileName}`;
@@ -449,7 +430,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
   };
 
   const resetSaveDialog = () => {
-    setSaveTopic(""); // Default to root if no folders selected
+    setSaveTopic("");
     setIsNewFolder(false);
     setCustom("");
     setSaveName("");
@@ -499,14 +480,15 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                         <span >{tab.name}</span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100  transition-opacity"
+                            <span
+                              className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
                               onClick={(e) => e.stopPropagation()}
+                              tabIndex={0}
+                              role="button"
+                              aria-label="Tab actions"
                             >
                               <MoreVertical className="h-3 w-3" />
-                            </Button>
+                            </span>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" side="right">
                             <DropdownMenuItem
@@ -635,14 +617,15 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                             <div className="flex items-center gap-1 shrink-0">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                                  <span
+                                    className="h-6 w-6 p-0 opacity-60 hover:opacity-100 flex items-center justify-center"
                                     onClick={(e) => e.stopPropagation()}
+                                    tabIndex={0}
+                                    role="button"
+                                    aria-label="Tab actions"
                                   >
                                     <MoreVertical className="h-3 w-3" />
-                                  </Button>
+                                  </span>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" side="right">
                                   <DropdownMenuItem
@@ -754,7 +737,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
             {/* Format */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div>
+                <span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -768,7 +751,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                       <Code2 className="h-3 w-3" />
                     )}
                   </Button>
-                </div>
+                </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {isFormatting
@@ -802,23 +785,23 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
             {/* Save to GitHub */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div>
+                <span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={!activeTab || !githubToken || !githubRepo}
+                    disabled={!activeTab || !githubRepo || !isConnected}
                     onClick={openSaveDialog}
                     className="h-8 w-8 p-0"
                   >
                     <UploadCloud className="h-3 w-3" />
                   </Button>
-                </div>
+                </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                {!githubToken
+                {!isConnected
                   ? "Connect GitHub in Settings"
                   : !githubRepo
-                    ? "Select repo"
+                    ? "Select repository in Settings"
                     : !activeTab
                       ? "No file open"
                       : "Save to GitHub"}
@@ -828,10 +811,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         </div>
       </div>
 
-      {/********************************************************************
-          ALL dialogs (keeping the same dialogs but with minor improvements)
-      ********************************************************************/}
-
+      {/* All your existing dialogs remain the same... */}
       {/* ── NEW FILE ─────────────────────────────────────────── */}
       <Dialog open={showNew} onOpenChange={setShowNew}>
         <DialogContent className="sm:max-w-md">
@@ -1014,7 +994,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                   <div>
                     <p className="text-sm font-medium">Repository</p>
                     <p className="text-xs text-muted-foreground">
-                      github.com/{githubUserName}/{githubRepo}
+                      github.com/{githubUser?.login}/{githubRepo}
                     </p>
                   </div>
                 </div>
@@ -1042,7 +1022,6 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                   isRetrying={loadingFolders}
                 />
               ) : (
-                /* ============ Always show root + folders + new folder option ============ */
                 <Select
                   value={isNewFolder ? "new-folder" : (saveTopic || "root")}
                   onValueChange={v => {
@@ -1144,7 +1123,6 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                       if (isNewFolder) {
                         return (customFolder || "new-folder") + "/" + (saveName || activeTab?.name || "filename");
                       } else if (!saveTopic) {
-                        // Root folder case
                         return saveName || activeTab?.name || "filename";
                       } else {
                         return saveTopic + "/" + (saveName || activeTab?.name || "filename");

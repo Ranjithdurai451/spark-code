@@ -1,11 +1,7 @@
 import { NextRequest } from "next/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
-
-const gemini = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
-
+import { getApiKeys } from "@/lib/getApiKeys";
 
 const LEETCODE_TEST_CASE_PROMPT = `
 🚨 **MAIN RULES - READ CAREFULLY:**
@@ -229,7 +225,6 @@ OR if no function found:
 🔥 **REMEMBER:** Generate test cases for what the function SHOULD do based on its signature, detected pattern, and inferred LeetCode problem, NOT what the user's potentially incorrect code does. **NEVER use or reference any code comments.** Ensure 100% correctness for any problem type, verifying outputs logically.
 `;
 
-
 interface FunctionSignature {
   name: string;
   parameters: string[];
@@ -242,9 +237,32 @@ interface FunctionSignature {
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
-    const { messages, code, language } = await req.json();
+    const {
+      messages,
+      code,
+      language,
+      geminiApiKey: clientGeminiApiKey,
+    } = await req.json();
+    const keyInfo = await getApiKeys(req);
+    const geminiKey =
+      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
+
+    // Check if key available
+    if (!geminiKey) {
+      return Response.json(
+        {
+          error: "NO_API_KEY",
+          message: keyInfo.error || "Gemini API key required",
+          mode: keyInfo.mode,
+        },
+        { status: 401 }
+      );
+    }
+    const gemini = createGoogleGenerativeAI({
+      apiKey: geminiKey,
+    });
 
     let codeToAnalyze = code;
     let detectedLanguage = language || "java";
@@ -252,7 +270,7 @@ export async function POST(req: NextRequest) {
     // Enhanced code extraction with better pattern matching
     if (!codeToAnalyze && Array.isArray(messages) && messages.length > 0) {
       const userMessage = messages[messages.length - 1];
-      
+
       const extractionPatterns: RegExp[] = [
         /``````/g, // Multi-line code blocks with language
         /`([^`\n]{10,})`/g, // Single line code (min 10 chars)
@@ -261,7 +279,9 @@ export async function POST(req: NextRequest) {
 
       // Enhanced code extraction with proper handling
       for (const pattern of extractionPatterns) {
-        const matches = Array.from(userMessage.content.matchAll(pattern)) as RegExpMatchArray[];
+        const matches = Array.from(
+          userMessage.content.matchAll(pattern)
+        ) as RegExpMatchArray[];
         for (const match of matches) {
           if (match[1] && match[1].length >= 10) {
             codeToAnalyze = match[1];
@@ -276,22 +296,37 @@ export async function POST(req: NextRequest) {
 
     // Enhanced validation
     if (!codeToAnalyze || codeToAnalyze.trim().length === 0) {
-      return Response.json({
-        error: "NO_CODE_PROVIDED",
-        message: "No code found in the request",
-        details: "Please provide code either directly or within triple backticks",
-        supportedLanguages: ["java", "cpp", "python", "go", "c", "javascript", "typescript"],
-        retryable: true
-      }, { status: 400 });
+      return Response.json(
+        {
+          error: "NO_CODE_PROVIDED",
+          message: "No code found in the request",
+          details:
+            "Please provide code either directly or within triple backticks",
+          supportedLanguages: [
+            "java",
+            "cpp",
+            "python",
+            "go",
+            "c",
+            "javascript",
+            "typescript",
+          ],
+          retryable: true,
+        },
+        { status: 400 }
+      );
     }
 
     if (codeToAnalyze.length < 15) {
-      return Response.json({
-        error: "INSUFFICIENT_CODE",
-        message: "Code is too short for meaningful analysis",
-        details: `Code length: ${codeToAnalyze.length} characters (minimum 15 required)`,
-        retryable: true
-      }, { status: 400 });
+      return Response.json(
+        {
+          error: "INSUFFICIENT_CODE",
+          message: "Code is too short for meaningful analysis",
+          details: `Code length: ${codeToAnalyze.length} characters (minimum 15 required)`,
+          retryable: true,
+        },
+        { status: 400 }
+      );
     }
 
     // Enhanced language detection
@@ -300,28 +335,45 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate language support
-    const supportedLanguages = ["java", "cpp", "c", "python", "go", "javascript", "typescript"];
+    const supportedLanguages = [
+      "java",
+      "cpp",
+      "c",
+      "python",
+      "go",
+      "javascript",
+      "typescript",
+    ];
     if (!supportedLanguages.includes(detectedLanguage.toLowerCase())) {
-      return Response.json({
-        error: "UNSUPPORTED_LANGUAGE",
-        message: `Language '${detectedLanguage}' is not supported`,
-        details: `Supported languages: ${supportedLanguages.join(', ')}`,
-        detectedLanguage,
-        retryable: true
-      }, { status: 400 });
+      return Response.json(
+        {
+          error: "UNSUPPORTED_LANGUAGE",
+          message: `Language '${detectedLanguage}' is not supported`,
+          details: `Supported languages: ${supportedLanguages.join(", ")}`,
+          detectedLanguage,
+          retryable: true,
+        },
+        { status: 400 }
+      );
     }
 
     // Enhanced function signature validation
-    const functionSignature = extractFunctionSignature(codeToAnalyze, detectedLanguage);
-    
+    const functionSignature = extractFunctionSignature(
+      codeToAnalyze,
+      detectedLanguage
+    );
+
     if (!functionSignature.isValid) {
-      return Response.json({
-        error: "NO_FUNCTION_FOUND",
-        message: "No callable function detected in the provided code",
-        details: `Expected a complete function definition in ${detectedLanguage}. Note: main methods, constructors, and utility methods are excluded from testing.`,
-        suggestions: getFunctionSuggestions(detectedLanguage),
-        retryable: true
-      }, { status: 400 });
+      return Response.json(
+        {
+          error: "NO_FUNCTION_FOUND",
+          message: "No callable function detected in the provided code",
+          details: `Expected a complete function definition in ${detectedLanguage}. Note: main methods, constructors, and utility methods are excluded from testing.`,
+          suggestions: getFunctionSuggestions(detectedLanguage),
+          retryable: true,
+        },
+        { status: 400 }
+      );
     }
 
     console.log(`📊 Enhanced Function Analysis:`, {
@@ -331,16 +383,21 @@ export async function POST(req: NextRequest) {
       codeLength: codeToAnalyze.length,
       algorithmPattern: functionSignature.algorithmPattern,
       dataStructures: functionSignature.dataStructureTypes,
-      processingTime: Date.now() - startTime
+      processingTime: Date.now() - startTime,
     });
 
     // Build enhanced prompt with function context
-    const prompt = LEETCODE_TEST_CASE_PROMPT
-      .replace(/\{user_code\}/g, codeToAnalyze)
+    const prompt = LEETCODE_TEST_CASE_PROMPT.replace(
+      /\{user_code\}/g,
+      codeToAnalyze
+    )
       .replace(/\{language\}/g, detectedLanguage)
       .replace(/\{function_name\}/g, functionSignature.name)
-      .replace(/\{function_params\}/g, functionSignature.parameters.join(', '))
-      .replace(/\{return_type\}/g, functionSignature.returnType || 'auto-detect');
+      .replace(/\{function_params\}/g, functionSignature.parameters.join(", "))
+      .replace(
+        /\{return_type\}/g,
+        functionSignature.returnType || "auto-detect"
+      );
 
     const result = streamText({
       model: gemini("gemini-2.0-flash"),
@@ -350,41 +407,58 @@ export async function POST(req: NextRequest) {
     });
 
     const response = result.toDataStreamResponse();
-    
-    // Enhanced response headers with metadata
-    response.headers.set('Content-Type', 'text/plain; charset=utf-8');
-    response.headers.set('Cache-Control', 'no-cache');
-    response.headers.set('X-Function-Name', functionSignature.name);
-    response.headers.set('X-Function-Language', detectedLanguage);
-    response.headers.set('X-Function-Parameters', functionSignature.parameters.length.toString());
-    response.headers.set('X-Algorithm-Pattern', functionSignature.algorithmPattern || 'unknown');
-    response.headers.set('X-Processing-Time', (Date.now() - startTime).toString());
-    
-    return response;
 
+    // Enhanced response headers with metadata
+    response.headers.set("Content-Type", "text/plain; charset=utf-8");
+    response.headers.set("Cache-Control", "no-cache");
+    response.headers.set("X-Function-Name", functionSignature.name);
+    response.headers.set("X-Function-Language", detectedLanguage);
+    response.headers.set(
+      "X-Function-Parameters",
+      functionSignature.parameters.length.toString()
+    );
+    response.headers.set(
+      "X-Algorithm-Pattern",
+      functionSignature.algorithmPattern || "unknown"
+    );
+    response.headers.set(
+      "X-Processing-Time",
+      (Date.now() - startTime).toString()
+    );
+
+    return response;
   } catch (error: any) {
     console.error("💥 Test Case Generation Error:", {
       error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      processingTime: Date.now() - startTime
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      processingTime: Date.now() - startTime,
     });
 
-    return Response.json({
-      error: "GENERATION_FAILED",
-      message: "Failed to generate test cases",
-      details: process.env.NODE_ENV === 'development' ? error.message : "Internal processing error",
-      timestamp: new Date().toISOString(),
-      processingTime: Date.now() - startTime,
-      retryable: true
-    }, { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json; charset=utf-8' }
-    });
+    return Response.json(
+      {
+        error: "GENERATION_FAILED",
+        message: "Failed to generate test cases",
+        details:
+          process.env.NODE_ENV === "development"
+            ? error.message
+            : "Internal processing error",
+        timestamp: new Date().toISOString(),
+        processingTime: Date.now() - startTime,
+        retryable: true,
+      },
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      }
+    );
   }
 }
 
 // Enhanced function signature extraction for all languages
-function extractFunctionSignature(code: string, language: string): FunctionSignature {
+function extractFunctionSignature(
+  code: string,
+  language: string
+): FunctionSignature {
   const result: FunctionSignature = {
     name: "",
     parameters: [],
@@ -392,24 +466,24 @@ function extractFunctionSignature(code: string, language: string): FunctionSigna
     isValid: false,
     returnType: "",
     algorithmPattern: "unknown",
-    dataStructureTypes: []
+    dataStructureTypes: [],
   };
 
   try {
     switch (language.toLowerCase()) {
-      case 'java':
+      case "java":
         return extractJavaFunction(code);
-      case 'python':
+      case "python":
         return extractPythonFunction(code);
-      case 'cpp':
+      case "cpp":
         return extractCppFunction(code);
-      case 'c':
+      case "c":
         return extractCFunction(code);
-      case 'go':
+      case "go":
         return extractGoFunction(code);
-      case 'javascript':
+      case "javascript":
         return extractJavaScriptFunction(code);
-      case 'typescript':
+      case "typescript":
         return extractTypeScriptFunction(code);
       default:
         return result;
@@ -425,10 +499,13 @@ function extractJavaFunction(code: string): FunctionSignature {
   // Improved regex: allow for generic return types, array types, and nested generics, and static/non-static
   // Also, match methods inside classes, and allow for whitespace/newlines
   // This pattern matches: [modifiers] returnType functionName(params) {
-  const javaPattern = /(?:public|private|protected)?\s*(?:static)?\s*([\w\<\>\[\], ?]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g;
+  const javaPattern =
+    /(?:public|private|protected)?\s*(?:static)?\s*([\w\<\>\[\], ?]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g;
 
   // Find all class names for constructor exclusion
-  const classNames = Array.from(code.matchAll(/class\s+(\w+)/g)).map(m => m[1]);
+  const classNames = Array.from(code.matchAll(/class\s+(\w+)/g)).map(
+    (m) => m[1]
+  );
 
   // Find all function matches
   const matches = Array.from(code.matchAll(javaPattern));
@@ -441,9 +518,24 @@ function extractJavaFunction(code: string): FunctionSignature {
 
     // Exclude common non-solution methods
     const excludedFunctions = [
-      'main', 'class', 'if', 'for', 'while', 'switch', 'try', 'catch',
-      'toString', 'equals', 'hashCode', 'compareTo', 'clone', 'finalize',
-      'wait', 'notify', 'notifyAll', 'getClass'
+      "main",
+      "class",
+      "if",
+      "for",
+      "while",
+      "switch",
+      "try",
+      "catch",
+      "toString",
+      "equals",
+      "hashCode",
+      "compareTo",
+      "clone",
+      "finalize",
+      "wait",
+      "notify",
+      "notifyAll",
+      "getClass",
     ];
     if (excludedFunctions.includes(functionName.toLowerCase())) continue;
 
@@ -452,7 +544,10 @@ function extractJavaFunction(code: string): FunctionSignature {
 
     // Parse parameters (handle empty string)
     const parameters = paramString.trim()
-      ? paramString.split(',').map(p => p.trim()).filter(Boolean)
+      ? paramString
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
       : [];
 
     // Validate function body: ensure the match is followed by a '{'
@@ -468,182 +563,292 @@ function extractJavaFunction(code: string): FunctionSignature {
       name: functionName,
       parameters,
       returnType,
-      language: 'java',
+      language: "java",
       isValid: true,
-      algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
-      dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+      algorithmPattern: detectAlgorithmPattern(
+        functionName,
+        parameters,
+        returnType,
+        code
+      ),
+      dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
     // Debug
-    console.log(`✅ Found Java function: ${functionName}(${parameters.join(", ")}) : ${returnType}`);
+    console.log(
+      `✅ Found Java function: ${functionName}(${parameters.join(", ")}) : ${returnType}`
+    );
 
     return signature;
   }
 
   // If nothing found, return invalid signature
   console.log(`❌ No valid Java function detected`);
-  return { name: "", parameters: [], language: 'java', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+  return {
+    name: "",
+    parameters: [],
+    language: "java",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
-
 
 // Enhanced Python function extraction
 function extractPythonFunction(code: string): FunctionSignature {
   const pythonPattern = /def\s+(\w+)\s*\(([^)]*)\)\s*(?:->\s*([^:]+))?\s*:/g;
-  
+
   const matches = Array.from(code.matchAll(pythonPattern));
-  
+
   for (const match of matches) {
     const [, functionName, paramString, returnType] = match;
-    
+
     const excludedFunctions = [
-      'main', '__init__', '__str__', '__repr__', '__eq__', '__hash__',
-      '__len__', '__getitem__', '__setitem__', '__contains__', '__iter__', '__next__'
+      "main",
+      "__init__",
+      "__str__",
+      "__repr__",
+      "__eq__",
+      "__hash__",
+      "__len__",
+      "__getitem__",
+      "__setitem__",
+      "__contains__",
+      "__iter__",
+      "__next__",
     ];
-    
-    if (excludedFunctions.includes(functionName.toLowerCase()) || 
-        (functionName.startsWith('__') && functionName.endsWith('__'))) {
+
+    if (
+      excludedFunctions.includes(functionName.toLowerCase()) ||
+      (functionName.startsWith("__") && functionName.endsWith("__"))
+    ) {
       continue;
     }
-    
-    const parameters = paramString.trim() ? 
-      paramString.split(',').map(p => {
-        const param = p.trim().split(':')[0].trim();
-        return param === 'self' ? param : param;
-      }).filter(p => p && p !== 'self') : [];
-    
+
+    const parameters = paramString.trim()
+      ? paramString
+          .split(",")
+          .map((p) => {
+            const param = p.trim().split(":")[0].trim();
+            return param === "self" ? param : param;
+          })
+          .filter((p) => p && p !== "self")
+      : [];
+
     // Validate function has body
     const functionStart = (match.index || 0) + match[0].length;
     const afterColon = code.substring(functionStart);
-    const nextLines = afterColon.split('\n').slice(1, 4);
-    
-    const hasBody = nextLines.some(line => line.trim() && (line.startsWith('    ') || line.startsWith('\t')));
-    
+    const nextLines = afterColon.split("\n").slice(1, 4);
+
+    const hasBody = nextLines.some(
+      (line) =>
+        line.trim() && (line.startsWith("    ") || line.startsWith("\t"))
+    );
+
     if (hasBody) {
       const signature = {
         name: functionName,
         parameters,
         returnType: returnType?.trim() || "",
-        language: 'python',
+        language: "python",
         isValid: true,
-        algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
-        dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+        algorithmPattern: detectAlgorithmPattern(
+          functionName,
+          parameters,
+          returnType,
+          code
+        ),
+        dataStructureTypes: detectDataStructureTypes(parameters, returnType),
       };
-      
-      console.log(`✅ Found Python function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+
+      console.log(
+        `✅ Found Python function: ${functionName} with pattern: ${signature.algorithmPattern}`
+      );
       return signature;
     }
   }
-  
-  return { name: "", parameters: [], language: 'python', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+
+  return {
+    name: "",
+    parameters: [],
+    language: "python",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
 
 // Enhanced C++ function extraction
 function extractCppFunction(code: string): FunctionSignature {
-  const cppPattern = /(\w+(?:<[^>]+>)?(?:\s*[&*])*)\s+(\w+)\s*\(([^)]*)\)\s*(?:const)?\s*{/g;
-  
+  const cppPattern =
+    /(\w+(?:<[^>]+>)?(?:\s*[&*])*)\s+(\w+)\s*\(([^)]*)\)\s*(?:const)?\s*{/g;
+
   const matches = Array.from(code.matchAll(cppPattern));
-  
+
   for (const match of matches) {
     const [, returnType, functionName, paramString] = match;
-    
+
     const excludedFunctions = [
-      'main', 'if', 'for', 'while', 'switch', 'try', 'catch',
-      'operator', 'new', 'delete'
+      "main",
+      "if",
+      "for",
+      "while",
+      "switch",
+      "try",
+      "catch",
+      "operator",
+      "new",
+      "delete",
     ];
-    
-    if (excludedFunctions.includes(functionName.toLowerCase()) || 
-        functionName.startsWith('~') || functionName.startsWith('operator')) {
+
+    if (
+      excludedFunctions.includes(functionName.toLowerCase()) ||
+      functionName.startsWith("~") ||
+      functionName.startsWith("operator")
+    ) {
       continue;
     }
-    
-    const parameters = paramString.trim() ? 
-      paramString.split(',').map(p => p.trim()) : [];
-    
+
+    const parameters = paramString.trim()
+      ? paramString.split(",").map((p) => p.trim())
+      : [];
+
     const signature = {
       name: functionName,
       parameters,
       returnType,
-      language: 'cpp',
+      language: "cpp",
       isValid: true,
-      algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
-      dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+      algorithmPattern: detectAlgorithmPattern(
+        functionName,
+        parameters,
+        returnType,
+        code
+      ),
+      dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
-    
-    console.log(`✅ Found C++ function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+
+    console.log(
+      `✅ Found C++ function: ${functionName} with pattern: ${signature.algorithmPattern}`
+    );
     return signature;
   }
-  
-  return { name: "", parameters: [], language: 'cpp', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+
+  return {
+    name: "",
+    parameters: [],
+    language: "cpp",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
 
 // C function extraction
 function extractCFunction(code: string): FunctionSignature {
   const cPattern = /(\w+(?:\s*[*])*)\s+(\w+)\s*\(([^)]*)\)\s*{/g;
-  
+
   const matches = Array.from(code.matchAll(cPattern));
-  
+
   for (const match of matches) {
     const [, returnType, functionName, paramString] = match;
-    
-    const excludedFunctions = ['main', 'if', 'for', 'while', 'switch', 'sizeof'];
-    
+
+    const excludedFunctions = [
+      "main",
+      "if",
+      "for",
+      "while",
+      "switch",
+      "sizeof",
+    ];
+
     if (excludedFunctions.includes(functionName.toLowerCase())) {
       continue;
     }
-    
-    const parameters = paramString.trim() ? 
-      paramString.split(',').map(p => p.trim()) : [];
-    
+
+    const parameters = paramString.trim()
+      ? paramString.split(",").map((p) => p.trim())
+      : [];
+
     const signature = {
       name: functionName,
       parameters,
       returnType,
-      language: 'c',
+      language: "c",
       isValid: true,
-      algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
-      dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+      algorithmPattern: detectAlgorithmPattern(
+        functionName,
+        parameters,
+        returnType,
+        code
+      ),
+      dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
-    
-    console.log(`✅ Found C function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+
+    console.log(
+      `✅ Found C function: ${functionName} with pattern: ${signature.algorithmPattern}`
+    );
     return signature;
   }
-  
-  return { name: "", parameters: [], language: 'c', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+
+  return {
+    name: "",
+    parameters: [],
+    language: "c",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
 
 // Go function extraction
 function extractGoFunction(code: string): FunctionSignature {
   const goPattern = /func\s+(\w+)\s*\(([^)]*)\)\s*([^{]*?)\s*{/g;
-  
+
   const matches = Array.from(code.matchAll(goPattern));
-  
+
   for (const match of matches) {
     const [, functionName, paramString, returnType] = match;
-    
-    const excludedFunctions = ['main', 'init', 'if', 'for', 'switch'];
-    
+
+    const excludedFunctions = ["main", "init", "if", "for", "switch"];
+
     if (excludedFunctions.includes(functionName.toLowerCase())) {
       continue;
     }
-    
-    const parameters = paramString.trim() ? 
-      paramString.split(',').map(p => p.trim()) : [];
-    
+
+    const parameters = paramString.trim()
+      ? paramString.split(",").map((p) => p.trim())
+      : [];
+
     const signature = {
       name: functionName,
       parameters,
       returnType: returnType?.trim() || "",
-      language: 'go',
+      language: "go",
       isValid: true,
-      algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
-      dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+      algorithmPattern: detectAlgorithmPattern(
+        functionName,
+        parameters,
+        returnType,
+        code
+      ),
+      dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
-    
-    console.log(`✅ Found Go function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+
+    console.log(
+      `✅ Found Go function: ${functionName} with pattern: ${signature.algorithmPattern}`
+    );
     return signature;
   }
-  
-  return { name: "", parameters: [], language: 'go', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+
+  return {
+    name: "",
+    parameters: [],
+    language: "go",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
 
 // NEW: JavaScript function extraction
@@ -657,57 +862,88 @@ function extractJavaScriptFunction(code: string): FunctionSignature {
     // Arrow functions: const name = () => {}
     /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g,
     // Arrow functions without parentheses: const name = param => {}
-    /(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*=>/g
+    /(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*=>/g,
   ];
 
   for (const pattern of jsPatterns) {
     const matches = Array.from(code.matchAll(pattern));
-    
+
     for (const match of matches) {
       const [, functionName, params] = match;
-      
+
       const excludedFunctions = [
-        'main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports',
-        'log', 'error', 'warn', 'info', 'debug', 'trace'
+        "main",
+        "console",
+        "if",
+        "for",
+        "while",
+        "require",
+        "module",
+        "exports",
+        "log",
+        "error",
+        "warn",
+        "info",
+        "debug",
+        "trace",
       ];
-      
+
       if (excludedFunctions.includes(functionName.toLowerCase())) {
         continue;
       }
-      
-      const parameters = params ? params.split(',').map(p => p.trim()).filter(p => p) : [];
-      
+
+      const parameters = params
+        ? params
+            .split(",")
+            .map((p) => p.trim())
+            .filter((p) => p)
+        : [];
+
       // Validate function has body (for arrow functions, we check if there's a => followed by { or expression)
       const functionStart = (match.index || 0) + match[0].length;
       const afterMatch = code.substring(functionStart);
-      
+
       let hasBody = false;
       if (pattern === jsPatterns[0] || pattern === jsPatterns[1]) {
         // Regular function or function expression - should have {
-        hasBody = afterMatch.trim().startsWith('{') || match[0].includes('{');
+        hasBody = afterMatch.trim().startsWith("{") || match[0].includes("{");
       } else {
         // Arrow function - has => in the match
         hasBody = true;
       }
-      
+
       if (hasBody) {
         const signature = {
           name: functionName,
           parameters,
           returnType: "", // JavaScript is dynamically typed
-          language: 'javascript',
+          language: "javascript",
           isValid: true,
-          algorithmPattern: detectAlgorithmPattern(functionName, parameters, "", code),
-          dataStructureTypes: detectDataStructureTypes(parameters, "")
+          algorithmPattern: detectAlgorithmPattern(
+            functionName,
+            parameters,
+            "",
+            code
+          ),
+          dataStructureTypes: detectDataStructureTypes(parameters, ""),
         };
-        
-        console.log(`✅ Found JavaScript function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+
+        console.log(
+          `✅ Found JavaScript function: ${functionName} with pattern: ${signature.algorithmPattern}`
+        );
         return signature;
       }
     }
   }
-  
-  return { name: "", parameters: [], language: 'javascript', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+
+  return {
+    name: "",
+    parameters: [],
+    language: "javascript",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
 
 // NEW: TypeScript function extraction
@@ -723,73 +959,131 @@ function extractTypeScriptFunction(code: string): FunctionSignature {
     // Function declarations without return type: function name() {}
     /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
     // Arrow functions without return type: const name = () => {}
-    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g
+    /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g,
   ];
 
   for (const pattern of tsPatterns) {
     const matches = Array.from(code.matchAll(pattern));
-    
+
     for (const match of matches) {
       const [, functionName, params, returnType] = match;
-      
+
       const excludedFunctions = [
-        'main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports',
-        'import', 'export', 'log', 'error', 'warn', 'info', 'debug', 'trace'
+        "main",
+        "console",
+        "if",
+        "for",
+        "while",
+        "require",
+        "module",
+        "exports",
+        "import",
+        "export",
+        "log",
+        "error",
+        "warn",
+        "info",
+        "debug",
+        "trace",
       ];
-      
+
       if (excludedFunctions.includes(functionName.toLowerCase())) {
         continue;
       }
-      
-      const parameters = params ? params.split(',')
-        .map(p => p.trim().split(':')[0].trim())
-        .filter(p => p) : [];
-      
+
+      const parameters = params
+        ? params
+            .split(",")
+            .map((p) => p.trim().split(":")[0].trim())
+            .filter((p) => p)
+        : [];
+
       // Validate function has body
       const functionStart = (match.index || 0) + match[0].length;
       const afterMatch = code.substring(functionStart);
-      
+
       let hasBody = false;
-      if (pattern === tsPatterns[0] || pattern === tsPatterns[1] || pattern === tsPatterns[3]) {
+      if (
+        pattern === tsPatterns[0] ||
+        pattern === tsPatterns[1] ||
+        pattern === tsPatterns[3]
+      ) {
         // Regular function or function expression - should have {
-        hasBody = afterMatch.trim().startsWith('{') || match[0].includes('{');
+        hasBody = afterMatch.trim().startsWith("{") || match[0].includes("{");
       } else {
         // Arrow function - has => in the match
         hasBody = true;
       }
-      
+
       if (hasBody) {
         const signature = {
           name: functionName,
           parameters,
           returnType: returnType?.trim() || "",
-          language: 'typescript',
+          language: "typescript",
           isValid: true,
-          algorithmPattern: detectAlgorithmPattern(functionName, parameters, returnType, code),
-          dataStructureTypes: detectDataStructureTypes(parameters, returnType)
+          algorithmPattern: detectAlgorithmPattern(
+            functionName,
+            parameters,
+            returnType,
+            code
+          ),
+          dataStructureTypes: detectDataStructureTypes(parameters, returnType),
         };
-        
-        console.log(`✅ Found TypeScript function: ${functionName} with pattern: ${signature.algorithmPattern}`);
+
+        console.log(
+          `✅ Found TypeScript function: ${functionName} with pattern: ${signature.algorithmPattern}`
+        );
         return signature;
       }
     }
   }
-  
-  return { name: "", parameters: [], language: 'typescript', isValid: false, algorithmPattern: "unknown", dataStructureTypes: [] };
+
+  return {
+    name: "",
+    parameters: [],
+    language: "typescript",
+    isValid: false,
+    algorithmPattern: "unknown",
+    dataStructureTypes: [],
+  };
 }
 
 // Enhanced language detection
 function detectLanguageFromCode(code: string): string {
   const languagePatterns = [
-    { pattern: /package\s+main|func\s+\w+.*\{|:=|fmt\.Print/i, language: 'go' },
-    { pattern: /public\s+(?:static\s+)?\w+\s+\w+\s*\(|import\s+java\.|System\.out|class\s+\w+/i, language: 'java' },
-    { pattern: /#include\s*<.*>.*using\s+namespace|std::|vector<|cout\s*<<|class\s+\w+.*{/i, language: 'cpp' },
-    { pattern: /#include\s*<.*>.*int\s+main|printf\s*\(|scanf\s*\(|malloc\s*\(/i, language: 'c' },
-    { pattern: /def\s+\w+.*:|import\s+\w+|print\s*\(|:\s*$|if\s+__name__/m, language: 'python' },
+    { pattern: /package\s+main|func\s+\w+.*\{|:=|fmt\.Print/i, language: "go" },
+    {
+      pattern:
+        /public\s+(?:static\s+)?\w+\s+\w+\s*\(|import\s+java\.|System\.out|class\s+\w+/i,
+      language: "java",
+    },
+    {
+      pattern:
+        /#include\s*<.*>.*using\s+namespace|std::|vector<|cout\s*<<|class\s+\w+.*{/i,
+      language: "cpp",
+    },
+    {
+      pattern:
+        /#include\s*<.*>.*int\s+main|printf\s*\(|scanf\s*\(|malloc\s*\(/i,
+      language: "c",
+    },
+    {
+      pattern: /def\s+\w+.*:|import\s+\w+|print\s*\(|:\s*$|if\s+__name__/m,
+      language: "python",
+    },
     // NEW: JavaScript patterns
-    { pattern: /function\s+\w+\s*\(|const\s+\w+\s*=\s*\(.*\)\s*=>|let\s+\w+\s*=|var\s+\w+\s*=|console\.log|require\s*\(|module\.exports/i, language: 'javascript' },
+    {
+      pattern:
+        /function\s+\w+\s*\(|const\s+\w+\s*=\s*\(.*\)\s*=>|let\s+\w+\s*=|var\s+\w+\s*=|console\.log|require\s*\(|module\.exports/i,
+      language: "javascript",
+    },
     // NEW: TypeScript patterns (check before JavaScript since TS is superset)
-    { pattern: /:\s*(string|number|boolean|any|\w+\[\])\s*[=\)\{]|interface\s+\w+|type\s+\w+\s*=|import\s+.*from|export\s+(default\s+)?/i, language: 'typescript' },
+    {
+      pattern:
+        /:\s*(string|number|boolean|any|\w+\[\])\s*[=\)\{]|interface\s+\w+|type\s+\w+\s*=|import\s+.*from|export\s+(default\s+)?/i,
+      language: "typescript",
+    },
   ];
 
   // Check TypeScript first since it's a superset of JavaScript
@@ -799,90 +1093,154 @@ function detectLanguageFromCode(code: string): string {
       return language;
     }
   }
-  
+
   console.log(`🔍 Defaulting to Java (no pattern matched)`);
-  return 'java';
+  return "java";
 }
 
 // Algorithm pattern detection
-function detectAlgorithmPattern(functionName: string, parameters: string[], returnType: string | undefined, code: string): string {
+function detectAlgorithmPattern(
+  functionName: string,
+  parameters: string[],
+  returnType: string | undefined,
+  code: string
+): string {
   const name = functionName.toLowerCase();
-  const paramStr = parameters.join(' ').toLowerCase();
+  const paramStr = parameters.join(" ").toLowerCase();
   const codeStr = code.toLowerCase();
-  
+
   // Two Sum pattern
-  if (name.includes('twosum') || name.includes('two_sum') || 
-      (paramStr.includes('target') && (paramStr.includes('array') || paramStr.includes('nums')))) {
-    return 'two_sum';
+  if (
+    name.includes("twosum") ||
+    name.includes("two_sum") ||
+    (paramStr.includes("target") &&
+      (paramStr.includes("array") || paramStr.includes("nums")))
+  ) {
+    return "two_sum";
   }
-  
+
   // Binary Search pattern
-  if (name.includes('search') || name.includes('binary') ||
-      (codeStr.includes('left') && codeStr.includes('right') && codeStr.includes('mid'))) {
-    return 'binary_search';
+  if (
+    name.includes("search") ||
+    name.includes("binary") ||
+    (codeStr.includes("left") &&
+      codeStr.includes("right") &&
+      codeStr.includes("mid"))
+  ) {
+    return "binary_search";
   }
-  
+
   // Linked List pattern
-  if (paramStr.includes('listnode') || name.includes('list') || 
-      codeStr.includes('next') || codeStr.includes('head')) {
-    return 'linked_list';
+  if (
+    paramStr.includes("listnode") ||
+    name.includes("list") ||
+    codeStr.includes("next") ||
+    codeStr.includes("head")
+  ) {
+    return "linked_list";
   }
-  
+
   // Tree pattern
-  if (paramStr.includes('treenode') || name.includes('tree') ||
-      (codeStr.includes('left') && codeStr.includes('right') && codeStr.includes('root'))) {
-    return 'binary_tree';
+  if (
+    paramStr.includes("treenode") ||
+    name.includes("tree") ||
+    (codeStr.includes("left") &&
+      codeStr.includes("right") &&
+      codeStr.includes("root"))
+  ) {
+    return "binary_tree";
   }
-  
+
   // Dynamic Programming pattern
-  if (name.includes('dp') || codeStr.includes('memo') || codeStr.includes('fibonacci') ||
-      codeStr.includes('dynamic') || name.includes('climb') || name.includes('coin')) {
-    return 'dynamic_programming';
+  if (
+    name.includes("dp") ||
+    codeStr.includes("memo") ||
+    codeStr.includes("fibonacci") ||
+    codeStr.includes("dynamic") ||
+    name.includes("climb") ||
+    name.includes("coin")
+  ) {
+    return "dynamic_programming";
   }
-  
+
   // Graph pattern
-  if (name.includes('graph') || paramStr.includes('adjacency') || 
-      codeStr.includes('visited') || codeStr.includes('dfs') || codeStr.includes('bfs')) {
-    return 'graph';
+  if (
+    name.includes("graph") ||
+    paramStr.includes("adjacency") ||
+    codeStr.includes("visited") ||
+    codeStr.includes("dfs") ||
+    codeStr.includes("bfs")
+  ) {
+    return "graph";
   }
-  
+
   // String pattern
-  if (paramStr.includes('string') || name.includes('palindrome') || 
-      name.includes('anagram') || name.includes('substring')) {
-    return 'string_manipulation';
+  if (
+    paramStr.includes("string") ||
+    name.includes("palindrome") ||
+    name.includes("anagram") ||
+    name.includes("substring")
+  ) {
+    return "string_manipulation";
   }
-  
+
   // Matrix pattern
-  if (paramStr.includes('matrix') || paramStr.includes('grid') ||
-      (codeStr.includes('row') && codeStr.includes('col'))) {
-    return 'matrix';
+  if (
+    paramStr.includes("matrix") ||
+    paramStr.includes("grid") ||
+    (codeStr.includes("row") && codeStr.includes("col"))
+  ) {
+    return "matrix";
   }
-  
+
   // Sliding Window pattern
-  if (name.includes('window') || name.includes('sliding') ||
-      (codeStr.includes('left') && codeStr.includes('right') && !codeStr.includes('mid'))) {
-    return 'sliding_window';
+  if (
+    name.includes("window") ||
+    name.includes("sliding") ||
+    (codeStr.includes("left") &&
+      codeStr.includes("right") &&
+      !codeStr.includes("mid"))
+  ) {
+    return "sliding_window";
   }
-  
-  return 'general_algorithm';
+
+  return "general_algorithm";
 }
 
 // Data structure type detection
-function detectDataStructureTypes(parameters: string[], returnType: string | undefined): string[] {
+function detectDataStructureTypes(
+  parameters: string[],
+  returnType: string | undefined
+): string[] {
   const types: string[] = [];
-  const allParams = parameters.join(' ') + ' ' + (returnType || '');
+  const allParams = parameters.join(" ") + " " + (returnType || "");
   const paramStr = allParams.toLowerCase();
-  
-  if (paramStr.includes('listnode')) types.push('linked_list');
-  if (paramStr.includes('treenode')) types.push('binary_tree');
-  if (paramStr.includes('array') || paramStr.includes('[]') || paramStr.includes('vector')) types.push('array');
-  if (paramStr.includes('string') || paramStr.includes('str')) types.push('string');
-  if (paramStr.includes('matrix') || paramStr.includes('grid')) types.push('matrix');
-  if (paramStr.includes('graph') || paramStr.includes('adjacency')) types.push('graph');
-  if (paramStr.includes('int') || paramStr.includes('long') || paramStr.includes('double') || paramStr.includes('number')) types.push('numeric');
-  if (paramStr.includes('bool') || paramStr.includes('boolean')) types.push('boolean');
-  
-  return types.length > 0 ? types : ['unknown'];
+
+  if (paramStr.includes("listnode")) types.push("linked_list");
+  if (paramStr.includes("treenode")) types.push("binary_tree");
+  if (
+    paramStr.includes("array") ||
+    paramStr.includes("[]") ||
+    paramStr.includes("vector")
+  )
+    types.push("array");
+  if (paramStr.includes("string") || paramStr.includes("str"))
+    types.push("string");
+  if (paramStr.includes("matrix") || paramStr.includes("grid"))
+    types.push("matrix");
+  if (paramStr.includes("graph") || paramStr.includes("adjacency"))
+    types.push("graph");
+  if (
+    paramStr.includes("int") ||
+    paramStr.includes("long") ||
+    paramStr.includes("double") ||
+    paramStr.includes("number")
+  )
+    types.push("numeric");
+  if (paramStr.includes("bool") || paramStr.includes("boolean"))
+    types.push("boolean");
+
+  return types.length > 0 ? types : ["unknown"];
 }
 
 // Get language-specific function suggestions
@@ -891,39 +1249,42 @@ function getFunctionSuggestions(language: string): string[] {
     java: [
       "public int[] twoSum(int[] nums, int target) { ... }",
       "public ListNode reverseList(ListNode head) { ... }",
-      "public boolean isValid(String s) { ... }"
+      "public boolean isValid(String s) { ... }",
     ],
     python: [
       "def two_sum(nums: List[int], target: int) -> List[int]: ...",
       "def reverse_list(head: ListNode) -> ListNode: ...",
-      "def is_valid(s: str) -> bool: ..."
+      "def is_valid(s: str) -> bool: ...",
     ],
     cpp: [
       "vector<int> twoSum(vector<int>& nums, int target) { ... }",
       "ListNode* reverseList(ListNode* head) { ... }",
-      "bool isValid(string s) { ... }"
+      "bool isValid(string s) { ... }",
     ],
     c: [
       "int* twoSum(int* nums, int numsSize, int target, int* returnSize) { ... }",
       "struct ListNode* reverseList(struct ListNode* head) { ... }",
-      "bool isValid(char* s) { ... }"
+      "bool isValid(char* s) { ... }",
     ],
     go: [
       "func twoSum(nums []int, target int) []int { ... }",
       "func reverseList(head *ListNode) *ListNode { ... }",
-      "func isValid(s string) bool { ... }"
+      "func isValid(s string) bool { ... }",
     ],
     javascript: [
       "function twoSum(nums, target) { ... }",
       "const reverseList = (head) => { ... }",
-      "function isValid(s) { ... }"
+      "function isValid(s) { ... }",
     ],
     typescript: [
       "function twoSum(nums: number[], target: number): number[] { ... }",
       "const reverseList = (head: ListNode): ListNode => { ... }",
-      "function isValid(s: string): boolean { ... }"
-    ]
+      "function isValid(s: string): boolean { ... }",
+    ],
   };
-  
-  return suggestions[language.toLowerCase() as keyof typeof suggestions] || suggestions.java;
+
+  return (
+    suggestions[language.toLowerCase() as keyof typeof suggestions] ||
+    suggestions.java
+  );
 }

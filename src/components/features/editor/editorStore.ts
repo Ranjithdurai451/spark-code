@@ -5,7 +5,14 @@ import { persist } from "zustand/middleware";
 /**
  * Supported programming languages for the LeetCode-style coding platform
  */
-export type Language = "java" | "python" | "javascript" | "typescript" | "cpp" | "c" | "go";
+export type Language =
+  | "java"
+  | "python"
+  | "javascript"
+  | "typescript"
+  | "cpp"
+  | "c"
+  | "go";
 
 /**
  * Configuration interface for each programming language
@@ -146,17 +153,12 @@ export interface Tab {
  */
 interface EditorState {
   // Tab Management
-  githubToken: string | null;
-  githubRepo: string;              
-  githubUserName:string; // default repo name
-  setGithubToken: (t: string | null) => void;
-  setGithubRepo: (r: string) => void;
-  setGithubUserName: (r: string) => void;
+
   /** Array of open editor tabs */
   tabs: Tab[];
   /** ID of the currently active tab */
   activeTabId: string | null;
-  
+
   // Editor Settings
   /** Font size in pixels for the code editor */
   fontSize: number;
@@ -176,7 +178,7 @@ interface EditorState {
   insertSpaces: boolean;
   /** Whether to enable auto formatting on save */
   formatOnSave: boolean;
-  
+
   // Actions - Tab Management
   /** Replace all tabs with the provided array */
   setTabs: (tabs: Tab[]) => void;
@@ -196,7 +198,7 @@ interface EditorState {
   closeAllTabs: () => void;
   /** Duplicate the current tab */
   duplicateTab: (id: string) => void;
-  
+
   // Actions - Editor Settings
   /** Set the editor font size */
   setFontSize: (size: number) => void;
@@ -216,7 +218,7 @@ interface EditorState {
   toggleInsertSpaces: () => void;
   /** Toggle format on save */
   toggleFormatOnSave: () => void;
-  
+
   // Utility Functions
   /** Get the currently active tab */
   getActiveTab: () => Tab | null;
@@ -256,27 +258,19 @@ export const useEditorStore = create<EditorState>()(
       tabSize: 4,
       insertSpaces: true,
       formatOnSave: false,
-       githubToken: null,
-      githubRepo: "",
-      githubUserName:"",
- setGithubToken: (t) => set({ githubToken: t }),
-      setGithubRepo: (r) => set({ githubRepo: r || "" }), 
-      setGithubUserName: (r) => set({ githubUserName: r || "" }), 
-      
+
       // Tab Management Actions
       setTabs: (tabs) => set({ tabs }),
-      
+
       setActiveTabId: (id) => set({ activeTabId: id }),
-      
+
       updateTab: (id, data) =>
         set((state) => ({
           tabs: state.tabs.map((tab) =>
-            tab.id === id 
-              ? { ...tab, ...data, lastModified: Date.now() }
-              : tab
+            tab.id === id ? { ...tab, ...data, lastModified: Date.now() } : tab
           ),
         })),
-      
+
       addTab: (tab) => {
         const newId = nanoid();
         const newTab: Tab = {
@@ -286,17 +280,17 @@ export const useEditorStore = create<EditorState>()(
           createdAt: Date.now(),
           lastModified: Date.now(),
         };
-        
+
         set((state) => ({
           tabs: [...state.tabs, newTab],
           activeTabId: newId,
         }));
       },
-      
+
       removeTab: (id) => {
         const state = get();
         const newTabs = state.tabs.filter((tab) => tab.id !== id);
-        
+
         let newActiveId = state.activeTabId;
         if (state.activeTabId === id) {
           // If removing active tab, select the next available tab
@@ -308,16 +302,16 @@ export const useEditorStore = create<EditorState>()(
             newActiveId = null;
           }
         }
-        
+
         set({ tabs: newTabs, activeTabId: newActiveId });
       },
-      
+
       markTabDirty: (id) => get().updateTab(id, { isDirty: true }),
-      
+
       markTabClean: (id) => get().updateTab(id, { isDirty: false }),
-      
+
       closeAllTabs: () => set({ tabs: [], activeTabId: null }),
-      
+
       duplicateTab: (id) => {
         const tab = get().getTabById(id);
         if (tab) {
@@ -332,23 +326,22 @@ export const useEditorStore = create<EditorState>()(
 
       // Editor Settings Actions
       setFontSize: (fontSize) => set({ fontSize }),
-      
+
       toggleVimMode: () =>
         set((state) => ({ isVimModeEnabled: !state.isVimModeEnabled })),
-      
+
       toggleRelativeLineNumbers: () =>
         set((state) => ({ relativeLineNumbers: !state.relativeLineNumbers })),
-      
-      toggleWordWrap: () =>
-        set((state) => ({ wordWrap: !state.wordWrap })),
-      
+
+      toggleWordWrap: () => set((state) => ({ wordWrap: !state.wordWrap })),
+
       setTheme: (theme) => set({ theme }),
-      
+
       toggleShowInvisibles: () =>
         set((state) => ({ showInvisibles: !state.showInvisibles })),
-      
+
       setTabSize: (tabSize) => set({ tabSize }),
-      
+
       toggleInsertSpaces: () =>
         set((state) => ({ insertSpaces: !state.insertSpaces })),
 
@@ -360,11 +353,11 @@ export const useEditorStore = create<EditorState>()(
         const state = get();
         return state.tabs.find((tab) => tab.id === state.activeTabId) || null;
       },
-      
+
       getTabById: (id) => {
         return get().tabs.find((tab) => tab.id === id) || null;
       },
-      
+
       hasUnsavedChanges: () => {
         return get().tabs.some((tab) => tab.isDirty);
       },
@@ -379,21 +372,17 @@ export const useEditorStore = create<EditorState>()(
     {
       name: "leetcode-editor-store",
       partialize: (state) => ({
-       tabs: state.tabs,
-  activeTabId: state.activeTabId,
-  fontSize: state.fontSize,
-  isVimModeEnabled: state.isVimModeEnabled,
-  relativeLineNumbers: state.relativeLineNumbers,
-  wordWrap: state.wordWrap,
-  theme: state.theme,
-  showInvisibles: state.showInvisibles,
-  tabSize: state.tabSize,
-  insertSpaces: state.insertSpaces,
-  formatOnSave: state.formatOnSave,
-  // Add GitHub state to persistence
-  githubToken: state.githubToken,
-  githubRepo: state.githubRepo,
-  githubUserName: state.githubUserName,
+        tabs: state.tabs,
+        activeTabId: state.activeTabId,
+        fontSize: state.fontSize,
+        isVimModeEnabled: state.isVimModeEnabled,
+        relativeLineNumbers: state.relativeLineNumbers,
+        wordWrap: state.wordWrap,
+        theme: state.theme,
+        showInvisibles: state.showInvisibles,
+        tabSize: state.tabSize,
+        insertSpaces: state.insertSpaces,
+        formatOnSave: state.formatOnSave,
       }),
     }
   )

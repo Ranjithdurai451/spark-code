@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useCredentialsStore } from "@/components/root/credentialsStore";
 
 interface GitHubFile {
     path: string;
@@ -54,7 +55,9 @@ const getFileIcon = (filename: string) => {
 };
 
 export default function GitHubFileBrowser() {
-    const { githubToken, githubRepo, githubUserName, addTab } = useEditorStore();
+    // Use correct stores
+    const { addTab } = useEditorStore();
+    const { githubUser, githubRepo, isConnected } = useCredentialsStore();
     const queryClient = useQueryClient();
 
     // State management
@@ -87,17 +90,16 @@ export default function GitHubFileBrowser() {
         refetch: fetchRepoTree,
         isRefetching
     } = useQuery({
-        queryKey: ['github-tree', githubToken, githubRepo],
+        queryKey: ['github-tree', githubRepo],
         queryFn: async () => {
-            if (!githubToken || !githubRepo) {
-                throw new Error("GitHub token and repository are required");
+            if (!githubRepo) {
+                throw new Error("GitHub repository is required");
             }
 
             const response = await fetch("/api/github-tree", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${githubToken}`
                 },
                 body: JSON.stringify({ repo: githubRepo })
             });
@@ -107,9 +109,9 @@ export default function GitHubFileBrowser() {
                 let errorMessage = errorData.error || "Failed to fetch repository tree";
 
                 if (response.status === 401) {
-                    errorMessage = "Invalid GitHub token. Please reconnect in Settings.";
+                    errorMessage = "Please sign in with GitHub again.";
                 } else if (response.status === 403) {
-                    errorMessage = "Access denied. Check repository permissions or rate limits.";
+                    errorMessage = "Access denied. Check repository permissions.";
                 } else if (response.status === 404) {
                     errorMessage = "Repository not found. Verify the repository name.";
                 }
@@ -120,12 +122,12 @@ export default function GitHubFileBrowser() {
             const data = await response.json();
             return data.files || [];
         },
-        enabled: !!(githubToken && githubRepo && open),
+        enabled: !!(githubRepo && isConnected && open),
         staleTime: 5 * 60 * 1000, // 5 minutes
         gcTime: 10 * 60 * 1000, // 10 minutes
         retry: (failureCount, error: any) => {
             // Don't retry on auth errors
-            if (error.message.includes('Invalid GitHub token') ||
+            if (error.message.includes('sign in') ||
                 error.message.includes('Access denied')) {
                 return false;
             }
@@ -286,9 +288,9 @@ export default function GitHubFileBrowser() {
         );
     }, [isSearchMode]);
 
-    // Import file
+    // Import file with updated NextAuth approach
     const importFile = useCallback(async (item: FileItem) => {
-        if (!githubToken || !githubRepo || item.type !== 'blob' || !item.language) return;
+        if (!githubRepo || item.type !== 'blob' || !item.language) return;
 
         setImporting(item.path);
 
@@ -297,7 +299,6 @@ export default function GitHubFileBrowser() {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${githubToken}`
                 },
                 body: JSON.stringify({
                     repo: githubRepo,
@@ -318,20 +319,28 @@ export default function GitHubFileBrowser() {
             });
 
             setOpen(false);
-            toast.success(`Imported ${item.name} successfully!`);
+            toast.success(`✅ Imported ${item.name} successfully!`, {
+                style: {
+                    background: "hsl(var(--background))",
+                    color: "#22c55e", // green-500
+                    border: "1px solid #22c55e"
+                }
+            });
 
         } catch (error: any) {
-            toast.error(`Failed to import ${item.name}: ${error.message}`, {
+            console.error("Import error:", error);
+            toast.error(`❌ ${error.message}`, {
                 style: {
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    border: "1px solid #f87171"
+                    background: "hsl(var(--background))",
+                    color: "#ef4444", // red-500
+                    border: "1px solid #ef4444",
+                    borderRadius: "8px"
                 }
             });
         } finally {
             setImporting(null);
         }
-    }, [githubToken, githubRepo, addTab]);
+    }, [githubRepo, addTab]);
 
     // Breadcrumbs
     const breadcrumbs = useMemo(() => {
@@ -407,19 +416,20 @@ export default function GitHubFileBrowser() {
         return { totalFiles, totalFolders, supportedFiles };
     }, [allFiles, isFileSupported]);
 
-    if (!githubToken || !githubRepo) {
+    // Check if GitHub is connected
+    if (!isConnected || !githubRepo) {
         return (
             <TooltipProvider>
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <div>
-                            <Button variant="ghost" size="sm" disabled className="h-7 px-2 text-xs opacity-70">
+                            <Button variant="ghost" size="sm" disabled className="h-8 w-8 p-0 opacity-50">
                                 <Download className="h-3 w-3" />
                             </Button>
                         </div>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="text-xs">
-                        {!githubToken ? "Connect GitHub in Settings"
+                        {!isConnected ? "Connect GitHub in Settings"
                             : !githubRepo ? "Select repository in Settings"
                                 : "Import from GitHub"}
                     </TooltipContent>
@@ -433,20 +443,18 @@ export default function GitHubFileBrowser() {
             <Dialog open={open} onOpenChange={handleOpen}>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <div>
-                            <DialogTrigger asChild>
-                                <Button variant="ghost" size="sm"
-                                    disabled={!githubToken || !githubRepo}
-                                    className="h-7 px-2 text-xs opacity-70 hover:opacity-100">
-                                    <Download className="h-3 w-3" />
-                                </Button>
-                            </DialogTrigger>
-                        </div>
+                        <DialogTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                            >
+                                <Download className="h-3 w-3" />
+                            </Button>
+                        </DialogTrigger>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="text-xs">
-                        {!githubToken ? "Connect GitHub in Settings"
-                            : !githubRepo ? "Select repository in Settings"
-                                : "Import from GitHub"}
+                        Import from GitHub
                     </TooltipContent>
                 </Tooltip>
 
@@ -460,7 +468,7 @@ export default function GitHubFileBrowser() {
                                     <span className="font-semibold text-lg">Import from</span>
                                 </div>
                                 <Badge variant="outline" className="font-mono text-sm px-3 py-1">
-                                    {githubUserName}/{githubRepo}
+                                    {githubUser?.login}/{githubRepo}
                                 </Badge>
                             </DialogTitle>
 
@@ -644,9 +652,9 @@ export default function GitHubFileBrowser() {
                             </div>
                         ) : error ? (
                             <div className="p-6">
-                                <Alert variant="destructive">
-                                    <AlertCircle className="h-4 w-4" />
-                                    <AlertDescription className="text-sm font-medium text-red-800 dark:text-red-200">
+                                <Alert variant="destructive" className="border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
+                                    <AlertCircle className="h-4 w-4 text-red-500" />
+                                    <AlertDescription className="text-sm font-medium text-red-500 dark:text-red-400">
                                         {error.message}
                                     </AlertDescription>
                                 </Alert>

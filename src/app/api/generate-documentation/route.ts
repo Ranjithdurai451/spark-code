@@ -11,10 +11,7 @@ import {
   extractGoFunction,
   extractCSharpFunction,
 } from "@/lib/extractor";
-
-const gemini = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
+import { getApiKeys } from "@/lib/getApiKeys";
 
 // Improved documentation generation prompt
 const CODE_DOCUMENTATION_PROMPT = `
@@ -107,7 +104,8 @@ function extractFunctionInfo(code: string, language: string): FunctionInfo {
     csharp: extractCSharpFunction,
   };
 
-  const extractor = extractors[language.toLowerCase() as keyof typeof extractors];
+  const extractor =
+    extractors[language.toLowerCase() as keyof typeof extractors];
   return extractor ? extractor(code) : createEmptyFunctionInfo(language);
 }
 
@@ -118,9 +116,18 @@ function detectLanguage(code: string): string {
     { regex: /#include.*<.*>.*std::|vector<|cout\s*<</, lang: "cpp" },
     { regex: /#include.*<.*>.*printf|malloc\s*\(/, lang: "c" },
     { regex: /def\s+\w+.*:|import\s+\w+|:\s*$/m, lang: "python" },
-    { regex: /using\s+System|Console\.WriteLine|public\s+class/, lang: "csharp" },
-    { regex: /:\s*(string|number|boolean|\w+\[\])\s*[=\)\{]|interface\s+\w+/, lang: "typescript" },
-    { regex: /function\s+\w+|const\s+\w+\s*=.*=>|console\.log/, lang: "javascript" },
+    {
+      regex: /using\s+System|Console\.WriteLine|public\s+class/,
+      lang: "csharp",
+    },
+    {
+      regex: /:\s*(string|number|boolean|\w+\[\])\s*[=\)\{]|interface\s+\w+/,
+      lang: "typescript",
+    },
+    {
+      regex: /function\s+\w+|const\s+\w+\s*=.*=>|console\.log/,
+      lang: "javascript",
+    },
   ];
 
   for (const { regex, lang } of patterns) {
@@ -141,10 +148,22 @@ function detectAlgorithmPattern(
   const patterns = [
     { keywords: ["twosum", "two_sum"], pattern: "two_pointer_technique" },
     { keywords: ["threesum", "three_sum"], pattern: "three_pointer_technique" },
-    { keywords: ["binary_search", "binarysearch", "search"], pattern: "binary_search" },
-    { keywords: ["reverse", "reverselist", "reverse_list"], pattern: "linked_list_reversal" },
-    { keywords: ["merge", "mergelist", "merge_list"], pattern: "merge_technique" },
-    { keywords: ["valid", "isvalid", "check"], pattern: "validation_algorithm" },
+    {
+      keywords: ["binary_search", "binarysearch", "search"],
+      pattern: "binary_search",
+    },
+    {
+      keywords: ["reverse", "reverselist", "reverse_list"],
+      pattern: "linked_list_reversal",
+    },
+    {
+      keywords: ["merge", "mergelist", "merge_list"],
+      pattern: "merge_technique",
+    },
+    {
+      keywords: ["valid", "isvalid", "check"],
+      pattern: "validation_algorithm",
+    },
     { keywords: ["palindrome", "ispalindrome"], pattern: "palindrome_check" },
     { keywords: ["anagram", "isanagram"], pattern: "string_manipulation" },
     { keywords: ["subarray", "maxsubarray"], pattern: "kadane_algorithm" },
@@ -158,7 +177,10 @@ function detectAlgorithmPattern(
     { keywords: ["island", "islands"], pattern: "graph_traversal" },
     { keywords: ["rotate", "rotation"], pattern: "array_manipulation" },
     { keywords: ["depth", "height"], pattern: "tree_traversal" },
-    { keywords: ["inorder", "preorder", "postorder"], pattern: "tree_traversal" },
+    {
+      keywords: ["inorder", "preorder", "postorder"],
+      pattern: "tree_traversal",
+    },
   ];
 
   for (const { keywords, pattern } of patterns) {
@@ -168,12 +190,23 @@ function detectAlgorithmPattern(
   }
 
   // Check code patterns
-  if (codeStr.includes("left") && codeStr.includes("right") && codeStr.includes("mid"))
+  if (
+    codeStr.includes("left") &&
+    codeStr.includes("right") &&
+    codeStr.includes("mid")
+  )
     return "binary_search";
-  if (codeStr.includes("next") && (codeStr.includes("prev") || codeStr.includes("head")))
+  if (
+    codeStr.includes("next") &&
+    (codeStr.includes("prev") || codeStr.includes("head"))
+  )
     return "linked_list_operations";
-  if (codeStr.includes("dp") || codeStr.includes("memo")) return "dynamic_programming";
-  if (codeStr.includes("visited") && (codeStr.includes("dfs") || codeStr.includes("bfs")))
+  if (codeStr.includes("dp") || codeStr.includes("memo"))
+    return "dynamic_programming";
+  if (
+    codeStr.includes("visited") &&
+    (codeStr.includes("dfs") || codeStr.includes("bfs"))
+  )
     return "graph_traversal";
 
   return "general_algorithm";
@@ -196,7 +229,30 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const { messages, code, language, type = "comprehensive" } = await req.json();
+    const {
+      messages,
+      code,
+      language,
+      geminiApiKey: clientGeminiApiKey,
+    } = await req.json();
+    const keyInfo = await getApiKeys(req);
+    const geminiKey =
+      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
+
+    // Check if key available
+    if (!geminiKey) {
+      return Response.json(
+        {
+          error: "NO_API_KEY",
+          message: keyInfo.error || "Gemini API key required",
+          mode: keyInfo.mode,
+        },
+        { status: 401 }
+      );
+    }
+    const gemini = createGoogleGenerativeAI({
+      apiKey: geminiKey,
+    });
 
     // Extract code from request
     let codeToDocument = code;
@@ -213,7 +269,8 @@ export async function POST(req: NextRequest) {
         // codeBlockMatch[1] is language, codeBlockMatch[2] is code (for code block)
         // codeBlockMatch[1] is code (for inline)
         if (codeBlockMatch[2]) {
-          detectedLanguage = codeBlockMatch[1] || detectLanguage(codeBlockMatch[2]);
+          detectedLanguage =
+            codeBlockMatch[1] || detectLanguage(codeBlockMatch[2]);
           codeToDocument = codeBlockMatch[2].trim();
         } else if (codeBlockMatch[1]) {
           detectedLanguage = detectLanguage(codeBlockMatch[1]);
@@ -227,7 +284,8 @@ export async function POST(req: NextRequest) {
       return new Response(
         JSON.stringify({
           error: "INSUFFICIENT_CODE",
-          message: "Please provide a substantial code snippet (at least 20 characters)",
+          message:
+            "Please provide a substantial code snippet (at least 20 characters)",
           suggestion: "Include a complete function or method implementation",
           retryable: true,
         }),
@@ -251,10 +309,15 @@ export async function POST(req: NextRequest) {
     });
 
     // Build documentation prompt
-    const documentationPrompt = CODE_DOCUMENTATION_PROMPT
-      .replace(/\{user_code\}/g, codeToDocument)
+    const documentationPrompt = CODE_DOCUMENTATION_PROMPT.replace(
+      /\{user_code\}/g,
+      codeToDocument
+    )
       .replace(/\{language\}/g, detectedLanguage)
-      .replace(/\{function_signature\}/g, functionInfo.signature || "Not detected")
+      .replace(
+        /\{function_signature\}/g,
+        functionInfo.signature || "Not detected"
+      )
       .replace(/\{algorithm_pattern\}/g, functionInfo.algorithmPattern);
 
     // Generate the documented code (NO STREAMING)
@@ -301,7 +364,6 @@ export async function POST(req: NextRequest) {
         "X-Function-Language": detectedLanguage,
         "X-Algorithm-Pattern": functionInfo.algorithmPattern,
         "X-Processing-Time": (Date.now() - startTime).toString(),
-        "X-Documentation-Type": type,
       },
     });
   } catch (error: any) {

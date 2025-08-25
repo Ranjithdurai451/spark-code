@@ -35,6 +35,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
 import { MemoizedMarkdown } from "@/components/mardown-render/MemoizedMarkdown";
 import { useEditorStore } from "@/components/features/editor/editorStore";
+import { useCredentialsStore } from "./credentialsStore";
 
 interface ChatbotModalProps {
     isOpen: boolean;
@@ -55,6 +56,7 @@ interface Tab {
 }
 
 export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
+    const { geminiApiKey } = useCredentialsStore();
     const [isNearBottom, setIsNearBottom] = useState(true);
     const [showScrollButton, setShowScrollButton] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(true);
@@ -83,7 +85,9 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
             currentTab: currentTab ? {
                 name: currentTab.name,
                 language: currentTab.language,
-                code: currentTab.code
+                code: currentTab.code,
+                geminiApiKey: geminiApiKey?.value
+
             } : null
         },
         initialMessages: []
@@ -294,7 +298,7 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
             await append({
                 id: `user-${Date.now()}`,
                 role: 'user',
-                content: finalMessage
+                content: finalMessage,
             });
 
         } catch (error) {

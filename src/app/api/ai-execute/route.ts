@@ -1,10 +1,7 @@
+import { getApiKeys } from "@/lib/getApiKeys";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
-
-const gemini = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
 
 const LANGUAGE_MAP: Record<string, number> = {
   javascript: 63,
@@ -16,8 +13,9 @@ const LANGUAGE_MAP: Record<string, number> = {
   go: 60,
 };
 
-const JUDGE0_URL = "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true";
-const JUDGE0_KEY = process.env.JUDGE0_KEY!;
+const JUDGE0_URL =
+  "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true";
+let JUDGE0_KEY;
 
 interface CodeAnalysis {
   functionName: string;
@@ -173,26 +171,26 @@ function analyzeUserCode(code: string, language: string): CodeAnalysis {
     language: language.toLowerCase(),
     dataStructures: new Set<string>(),
     needsConversion: false,
-    algorithmPattern: "standard"
+    algorithmPattern: "standard",
   };
 
   console.log(`🔍 Analyzing ${language} code:`, code.substring(0, 200) + "...");
 
   try {
     switch (language.toLowerCase()) {
-      case 'java':
+      case "java":
         return analyzeJavaCode(code, analysis);
-      case 'python':
+      case "python":
         return analyzePythonCode(code, analysis);
-      case 'cpp':
+      case "cpp":
         return analyzeCppCode(code, analysis);
-      case 'c':
+      case "c":
         return analyzeCCode(code, analysis);
-      case 'go':
+      case "go":
         return analyzeGoCode(code, analysis);
-      case 'javascript':
+      case "javascript":
         return analyzeJavaScriptCode(code, analysis);
-      case 'typescript':
+      case "typescript":
         return analyzeTypeScriptCode(code, analysis);
       default:
         throw new Error(`Unsupported language: ${language}`);
@@ -212,14 +210,14 @@ function analyzeJavaCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
     // Method without access modifier: (static) returnType methodName(params) {
     /(static)?\s*([\w<>\[\]\s,]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
     // Simple pattern: returnType methodName(params) {
-    /([\w<>\[\]]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g
+    /([\w<>\[\]]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
   ];
 
   for (const pattern of methodPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       let access, staticKeyword, returnType, methodName, params;
-      
+
       if (match.length === 6) {
         [, access, staticKeyword, returnType, methodName, params] = match;
       } else if (match.length === 5) {
@@ -227,26 +225,34 @@ function analyzeJavaCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
       } else {
         [, returnType, methodName, params] = match;
       }
-      
-      console.log(`🎯 Found Java method: ${methodName}`, { returnType, params });
-      
+
+      console.log(`🎯 Found Java method: ${methodName}`, {
+        returnType,
+        params,
+      });
+
       if (methodName && !isExcludedJavaMethod(methodName)) {
         analysis.functionName = methodName;
         analysis.returnType = returnType?.trim() || "";
         analysis.isStatic = !!staticKeyword;
-        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
-        
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => p.trim())
+              .filter((p: string) => p)
+          : [];
+
         // Enhanced data structure detection
         const signature = `${returnType} ${params} ${code}`;
         detectDataStructures(signature, analysis);
         detectAlgorithmPattern(methodName, signature, code, analysis);
-        
+
         console.log(`✅ Java function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid Java function found in code`);
   return analysis;
 }
@@ -259,38 +265,49 @@ function analyzePythonCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
     // Function without type hints: def func(params):
     /def\s+(\w+)\s*\(([^)]*)\):/g,
     // Class methods: def func(self, params):
-    /def\s+(\w+)\s*\(\s*self\s*(?:,\s*([^)]*))?\)\s*(?:->\s*([^:]+))?:/g
+    /def\s+(\w+)\s*\(\s*self\s*(?:,\s*([^)]*))?\)\s*(?:->\s*([^:]+))?:/g,
   ];
 
   for (const pattern of functionPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       const [, functionName, params, returnType] = match;
-      
-      console.log(`🎯 Found Python function: ${functionName}`, { params, returnType });
-      
+
+      console.log(`🎯 Found Python function: ${functionName}`, {
+        params,
+        returnType,
+      });
+
       if (!isExcludedPythonMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = returnType?.trim() || "";
-        analysis.parameters = params ? params.split(',')
-          .map((p: string) => {
-            // Handle type hints: param: type = default
-            const cleanParam = p.trim().split(':')[0].trim().split('=')[0].trim();
-            return cleanParam;
-          })
-          .filter((p: string) => p && p !== 'self') : [];
-        
-        const signature = `${returnType || ''} ${params} ${code}`;
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => {
+                // Handle type hints: param: type = default
+                const cleanParam = p
+                  .trim()
+                  .split(":")[0]
+                  .trim()
+                  .split("=")[0]
+                  .trim();
+                return cleanParam;
+              })
+              .filter((p: string) => p && p !== "self")
+          : [];
+
+        const signature = `${returnType || ""} ${params} ${code}`;
         detectDataStructures(signature, analysis);
         detectDataStructures(code, analysis);
         detectAlgorithmPattern(functionName, signature, code, analysis);
-        
+
         console.log(`✅ Python function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid Python function found in code`);
   return analysis;
 }
@@ -303,38 +320,46 @@ function analyzeCppCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
     // Regular functions: returnType func(params) {
     /([\w<>\*&:\s]+)\s+(\w+)\s*\(([^)]*)\)\s*(?:const)?\s*\{/g,
     // Member functions: Class::func(params) {
-    /(\w+)::\s*(\w+)\s*\(([^)]*)\)\s*(?:const)?\s*\{/g
+    /(\w+)::\s*(\w+)\s*\(([^)]*)\)\s*(?:const)?\s*\{/g,
   ];
 
   for (const pattern of functionPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       let returnType, functionName, params;
-      
-      if (match.length === 4 && match[0].includes('::')) {
+
+      if (match.length === 4 && match[0].includes("::")) {
         [, , functionName, params] = match;
         returnType = ""; // Member function, return type may be implicit
       } else {
         [, returnType, functionName, params] = match;
       }
-      
-      console.log(`🎯 Found C++ function: ${functionName}`, { returnType, params });
-      
+
+      console.log(`🎯 Found C++ function: ${functionName}`, {
+        returnType,
+        params,
+      });
+
       if (!isExcludedCppMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = returnType?.trim() || "";
-        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
-        
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => p.trim())
+              .filter((p: string) => p)
+          : [];
+
         const signature = `${returnType} ${params} ${code}`;
         detectDataStructures(signature, analysis);
         detectAlgorithmPattern(functionName, signature, code, analysis);
-        
+
         console.log(`✅ C++ function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid C++ function found in code`);
   return analysis;
 }
@@ -344,32 +369,40 @@ function analyzeCCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
   const functionPatterns = [
     // Standard C function: returnType func(params) {
     /([\w\*\s]+)\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
-    // Function pointer: returnType (*func)(params) = 
-    /([\w\*\s]+)\s*\(\*(\w+)\)\s*\(([^)]*)\)/g
+    // Function pointer: returnType (*func)(params) =
+    /([\w\*\s]+)\s*\(\*(\w+)\)\s*\(([^)]*)\)/g,
   ];
 
   for (const pattern of functionPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       const [, returnType, functionName, params] = match;
-      
-      console.log(`🎯 Found C function: ${functionName}`, { returnType, params });
-      
+
+      console.log(`🎯 Found C function: ${functionName}`, {
+        returnType,
+        params,
+      });
+
       if (!isExcludedCMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = returnType.trim();
-        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
-        
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => p.trim())
+              .filter((p: string) => p)
+          : [];
+
         const signature = `${returnType} ${params}`;
         detectDataStructures(signature, analysis);
         detectAlgorithmPattern(functionName, signature, code, analysis);
-        
+
         console.log(`✅ C function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid C function found in code`);
   return analysis;
 }
@@ -382,37 +415,48 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
     // Method: func (receiver) name(params) returnType {
     /func\s+\([^)]+\)\s+(\w+)\s*\(([^)]*)\)\s*([^{]*?)\s*\{/g,
     // Function with multiple return values: func name(params) (returnTypes) {
-    /func\s+(\w+)\s*\(([^)]*)\)\s*\(([^)]+)\)\s*\{/g
+    /func\s+(\w+)\s*\(([^)]*)\)\s*\(([^)]+)\)\s*\{/g,
   ];
 
   for (const pattern of functionPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       const [, functionName, params, returnType] = match;
-      
-      console.log(`🎯 Found Go function: ${functionName}`, { params, returnType });
-      
+
+      console.log(`🎯 Found Go function: ${functionName}`, {
+        params,
+        returnType,
+      });
+
       if (!isExcludedGoMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = returnType?.trim() || "";
-        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
-        
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => p.trim())
+              .filter((p: string) => p)
+          : [];
+
         const signature = `${returnType} ${params}`;
         detectDataStructures(signature, analysis);
         detectAlgorithmPattern(functionName, signature, code, analysis);
-        
+
         console.log(`✅ Go function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid Go function found in code`);
   return analysis;
 }
 
 // Enhanced JavaScript analysis
-function analyzeJavaScriptCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
+function analyzeJavaScriptCode(
+  code: string,
+  analysis: CodeAnalysis
+): CodeAnalysis {
   const functionPatterns = [
     // Function declarations: function name(params) {}
     /function\s+(\w+)\s*\(([^)]*)\)\s*\{/g,
@@ -423,38 +467,46 @@ function analyzeJavaScriptCode(code: string, analysis: CodeAnalysis): CodeAnalys
     // Arrow functions single param: const name = param => {}
     /(?:const|let|var)\s+(\w+)\s*=\s*(\w+)\s*=>/g,
     // Class methods: methodName(params) {}
-    /(\w+)\s*\(([^)]*)\)\s*\{/g
+    /(\w+)\s*\(([^)]*)\)\s*\{/g,
   ];
 
   for (const pattern of functionPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       const [, functionName, params] = match;
-      
+
       console.log(`🎯 Found JavaScript function: ${functionName}`, { params });
-      
+
       if (!isExcludedJavaScriptMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = ""; // JavaScript is dynamically typed
-        analysis.parameters = params ? params.split(',').map((p: string) => p.trim()).filter((p: string) => p) : [];
-        
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => p.trim())
+              .filter((p: string) => p)
+          : [];
+
         const signature = `${params} ${code}`;
         detectDataStructures(signature, analysis);
         detectDataStructures(code, analysis);
         detectAlgorithmPattern(functionName, signature, code, analysis);
-        
+
         console.log(`✅ JavaScript function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid JavaScript function found in code`);
   return analysis;
 }
 
 // Enhanced TypeScript analysis
-function analyzeTypeScriptCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
+function analyzeTypeScriptCode(
+  code: string,
+  analysis: CodeAnalysis
+): CodeAnalysis {
   const functionPatterns = [
     // Function with return type: function name(params): returnType {}
     /function\s+(\w+)\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g,
@@ -465,191 +517,396 @@ function analyzeTypeScriptCode(code: string, analysis: CodeAnalysis): CodeAnalys
     // Arrow function without return type: const name = (params) => {}
     /(?:const|let|var)\s+(\w+)\s*=\s*\(([^)]*)\)\s*=>/g,
     // Class methods with types: methodName(params): returnType {}
-    /(\w+)\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g
+    /(\w+)\s*\(([^)]*)\)\s*:\s*([^{]+)\s*\{/g,
   ];
 
   for (const pattern of functionPatterns) {
     let match;
     while ((match = pattern.exec(code)) !== null) {
       const [, functionName, params, returnType] = match;
-      
-      console.log(`🎯 Found TypeScript function: ${functionName}`, { params, returnType });
-      
+
+      console.log(`🎯 Found TypeScript function: ${functionName}`, {
+        params,
+        returnType,
+      });
+
       if (!isExcludedTypeScriptMethod(functionName)) {
         analysis.functionName = functionName;
         analysis.returnType = returnType?.trim() || "";
-        analysis.parameters = params ? params.split(',')
-          .map((p: string) => {
-            // Handle type hints: param: type = default
-            const cleanParam = p.trim().split(':')[0].trim().split('=')[0].trim();
-            return cleanParam;
-          })
-          .filter((p: string) => p) : [];
-        
-        const signature = `${returnType || ''} ${params} ${code}`;
+        analysis.parameters = params
+          ? params
+              .split(",")
+              .map((p: string) => {
+                // Handle type hints: param: type = default
+                const cleanParam = p
+                  .trim()
+                  .split(":")[0]
+                  .trim()
+                  .split("=")[0]
+                  .trim();
+                return cleanParam;
+              })
+              .filter((p: string) => p)
+          : [];
+
+        const signature = `${returnType || ""} ${params} ${code}`;
         detectDataStructures(signature, analysis);
         detectDataStructures(code, analysis);
         detectAlgorithmPattern(functionName, signature, code, analysis);
-        
+
         console.log(`✅ TypeScript function detected:`, analysis);
         return analysis;
       }
     }
   }
-  
+
   console.log(`❌ No valid TypeScript function found in code`);
   return analysis;
 }
 
 // Helper functions for exclusion lists
 function isExcludedJavaMethod(name: string): boolean {
-  const excluded = ['main', 'toString', 'equals', 'hashCode', 'compareTo', 'clone', 'class', 'if', 'for', 'while', 'public', 'private', 'protected', 'static', 'void', 'int', 'String'];
+  const excluded = [
+    "main",
+    "toString",
+    "equals",
+    "hashCode",
+    "compareTo",
+    "clone",
+    "class",
+    "if",
+    "for",
+    "while",
+    "public",
+    "private",
+    "protected",
+    "static",
+    "void",
+    "int",
+    "String",
+  ];
   return excluded.includes(name.toLowerCase());
 }
 
 function isExcludedPythonMethod(name: string): boolean {
-  const excluded = ['main', '__init__', '__str__', '__repr__', '__eq__', '__hash__', '__len__', 'if', 'for', 'while', 'def', 'class'];
-  return excluded.includes(name.toLowerCase()) || (name.startsWith('__') && name.endsWith('__'));
+  const excluded = [
+    "main",
+    "__init__",
+    "__str__",
+    "__repr__",
+    "__eq__",
+    "__hash__",
+    "__len__",
+    "if",
+    "for",
+    "while",
+    "def",
+    "class",
+  ];
+  return (
+    excluded.includes(name.toLowerCase()) ||
+    (name.startsWith("__") && name.endsWith("__"))
+  );
 }
 
 function isExcludedCppMethod(name: string): boolean {
-  const excluded = ['main', 'operator', 'if', 'for', 'while', 'class', 'struct', 'template', 'namespace', 'using', 'include'];
-  return excluded.includes(name.toLowerCase()) || name.startsWith('~') || name.includes('operator');
+  const excluded = [
+    "main",
+    "operator",
+    "if",
+    "for",
+    "while",
+    "class",
+    "struct",
+    "template",
+    "namespace",
+    "using",
+    "include",
+  ];
+  return (
+    excluded.includes(name.toLowerCase()) ||
+    name.startsWith("~") ||
+    name.includes("operator")
+  );
 }
 
 function isExcludedCMethod(name: string): boolean {
-  const excluded = ['main', 'printf', 'scanf', 'malloc', 'free', 'if', 'for', 'while', 'struct', 'union', 'typedef'];
+  const excluded = [
+    "main",
+    "printf",
+    "scanf",
+    "malloc",
+    "free",
+    "if",
+    "for",
+    "while",
+    "struct",
+    "union",
+    "typedef",
+  ];
   return excluded.includes(name.toLowerCase());
 }
 
 function isExcludedGoMethod(name: string): boolean {
-  const excluded = ['main', 'init', 'if', 'for', 'switch', 'func', 'var', 'const', 'type', 'package', 'import'];
+  const excluded = [
+    "main",
+    "init",
+    "if",
+    "for",
+    "switch",
+    "func",
+    "var",
+    "const",
+    "type",
+    "package",
+    "import",
+  ];
   return excluded.includes(name.toLowerCase());
 }
 
 function isExcludedJavaScriptMethod(name: string): boolean {
-  const excluded = ['main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports', 'function', 'var', 'let', 'const'];
+  const excluded = [
+    "main",
+    "console",
+    "if",
+    "for",
+    "while",
+    "require",
+    "module",
+    "exports",
+    "function",
+    "var",
+    "let",
+    "const",
+  ];
   return excluded.includes(name.toLowerCase());
 }
 
 function isExcludedTypeScriptMethod(name: string): boolean {
-  const excluded = ['main', 'console', 'if', 'for', 'while', 'require', 'module', 'exports', 'import', 'export', 'function', 'var', 'let', 'const', 'type', 'interface', 'class'];
+  const excluded = [
+    "main",
+    "console",
+    "if",
+    "for",
+    "while",
+    "require",
+    "module",
+    "exports",
+    "import",
+    "export",
+    "function",
+    "var",
+    "let",
+    "const",
+    "type",
+    "interface",
+    "class",
+  ];
   return excluded.includes(name.toLowerCase());
 }
 
 // Enhanced data structure detection
 function detectDataStructures(signature: string, analysis: CodeAnalysis): void {
   const sigLower = signature.toLowerCase();
-  
+
   // Linked List detection
-  if (sigLower.includes('listnode') || sigLower.includes('linkedlist') || sigLower.includes('list<')) {
-    analysis.dataStructures.add('ListNode');
+  if (
+    sigLower.includes("listnode") ||
+    sigLower.includes("linkedlist") ||
+    sigLower.includes("list<")
+  ) {
+    analysis.dataStructures.add("ListNode");
     analysis.needsConversion = true;
   }
-  
+
   // Binary Tree detection
-  if (sigLower.includes('treenode') || sigLower.includes('binarytree') || sigLower.includes('tree')) {
-    analysis.dataStructures.add('TreeNode');
+  if (
+    sigLower.includes("treenode") ||
+    sigLower.includes("binarytree") ||
+    sigLower.includes("tree")
+  ) {
+    analysis.dataStructures.add("TreeNode");
     analysis.needsConversion = true;
   }
-  
+
   // Graph detection
-  if (sigLower.includes('graphnode') || sigLower.includes('graph') || sigLower.includes('adjacency')) {
-    analysis.dataStructures.add('GraphNode');
+  if (
+    sigLower.includes("graphnode") ||
+    sigLower.includes("graph") ||
+    sigLower.includes("adjacency")
+  ) {
+    analysis.dataStructures.add("GraphNode");
     analysis.needsConversion = true;
   }
-  
+
   // Matrix detection
-  if (sigLower.includes('matrix') || sigLower.includes('grid') || sigLower.includes('int[][]') || sigLower.includes('vector<vector')) {
-    analysis.dataStructures.add('Matrix');
+  if (
+    sigLower.includes("matrix") ||
+    sigLower.includes("grid") ||
+    sigLower.includes("int[][]") ||
+    sigLower.includes("vector<vector")
+  ) {
+    analysis.dataStructures.add("Matrix");
   }
 }
 
 // Enhanced algorithm pattern detection
-function detectAlgorithmPattern(funcName: string, signature: string, code: string, analysis: CodeAnalysis): void {
+function detectAlgorithmPattern(
+  funcName: string,
+  signature: string,
+  code: string,
+  analysis: CodeAnalysis
+): void {
   const name = funcName.toLowerCase();
   const sig = signature.toLowerCase();
   const codeStr = code.toLowerCase();
-  
+
   // Two Sum family
-  if (name.includes('twosum') || name.includes('two_sum') || name.includes('twosum')) {
-    analysis.algorithmPattern = 'two_sum';
+  if (
+    name.includes("twosum") ||
+    name.includes("two_sum") ||
+    name.includes("twosum")
+  ) {
+    analysis.algorithmPattern = "two_sum";
   }
   // Binary Search
-  else if (name.includes('search') || name.includes('binarysearch') || codeStr.includes('binary search') || codeStr.includes('left <= right')) {
-    analysis.algorithmPattern = 'binary_search';
+  else if (
+    name.includes("search") ||
+    name.includes("binarysearch") ||
+    codeStr.includes("binary search") ||
+    codeStr.includes("left <= right")
+  ) {
+    analysis.algorithmPattern = "binary_search";
   }
   // Linked List operations
-  else if (analysis.dataStructures.has('ListNode') || name.includes('reverse') || name.includes('merge') || name.includes('cycle')) {
-    analysis.algorithmPattern = 'linked_list';
+  else if (
+    analysis.dataStructures.has("ListNode") ||
+    name.includes("reverse") ||
+    name.includes("merge") ||
+    name.includes("cycle")
+  ) {
+    analysis.algorithmPattern = "linked_list";
   }
   // Binary Tree operations
-  else if (analysis.dataStructures.has('TreeNode') || name.includes('traversal') || name.includes('inorder') || name.includes('preorder') || name.includes('postorder')) {
-    analysis.algorithmPattern = 'binary_tree';
+  else if (
+    analysis.dataStructures.has("TreeNode") ||
+    name.includes("traversal") ||
+    name.includes("inorder") ||
+    name.includes("preorder") ||
+    name.includes("postorder")
+  ) {
+    analysis.algorithmPattern = "binary_tree";
   }
   // Dynamic Programming
-  else if (name.includes('dp') || name.includes('dynamic') || name.includes('fib') || name.includes('climb') || codeStr.includes('memo')) {
-    analysis.algorithmPattern = 'dynamic_programming';
+  else if (
+    name.includes("dp") ||
+    name.includes("dynamic") ||
+    name.includes("fib") ||
+    name.includes("climb") ||
+    codeStr.includes("memo")
+  ) {
+    analysis.algorithmPattern = "dynamic_programming";
   }
   // Matrix operations
-  else if (analysis.dataStructures.has('Matrix') || name.includes('rotate') || name.includes('spiral') || name.includes('island')) {
-    analysis.algorithmPattern = 'matrix';
+  else if (
+    analysis.dataStructures.has("Matrix") ||
+    name.includes("rotate") ||
+    name.includes("spiral") ||
+    name.includes("island")
+  ) {
+    analysis.algorithmPattern = "matrix";
   }
   // String operations
-  else if (sig.includes('string') || name.includes('valid') || name.includes('palindrome') || name.includes('anagram')) {
-    analysis.algorithmPattern = 'string_processing';
+  else if (
+    sig.includes("string") ||
+    name.includes("valid") ||
+    name.includes("palindrome") ||
+    name.includes("anagram")
+  ) {
+    analysis.algorithmPattern = "string_processing";
   }
   // Backtracking
-  else if (name.includes('permut') || name.includes('combin') || name.includes('subset') || codeStr.includes('backtrack')) {
-    analysis.algorithmPattern = 'backtracking';
+  else if (
+    name.includes("permut") ||
+    name.includes("combin") ||
+    name.includes("subset") ||
+    codeStr.includes("backtrack")
+  ) {
+    analysis.algorithmPattern = "backtracking";
   }
   // Sliding Window
-  else if (name.includes('window') || name.includes('substring') || name.includes('subarray')) {
-    analysis.algorithmPattern = 'sliding_window';
+  else if (
+    name.includes("window") ||
+    name.includes("substring") ||
+    name.includes("subarray")
+  ) {
+    analysis.algorithmPattern = "sliding_window";
   }
   // Stack/Queue
-  else if (name.includes('stack') || name.includes('queue') || name.includes('parenthes') || name.includes('bracket')) {
-    analysis.algorithmPattern = 'stack_queue';
+  else if (
+    name.includes("stack") ||
+    name.includes("queue") ||
+    name.includes("parenthes") ||
+    name.includes("bracket")
+  ) {
+    analysis.algorithmPattern = "stack_queue";
   }
   // Default
   else {
-    analysis.algorithmPattern = 'standard';
+    analysis.algorithmPattern = "standard";
   }
 }
 
 // Enhanced wrapper prompt builder with comprehensive LeetCode format knowledge
-function buildWrapperPrompt({ userCode, language, testCase, analysis }: {
+function buildWrapperPrompt({
+  userCode,
+  language,
+  testCase,
+  analysis,
+}: {
   userCode: string;
   language: string;
   testCase: { input: any[]; output: any };
   analysis: CodeAnalysis;
 }): string {
-  return LEETCODE_WRAPPER_PROMPT
-    .replace(/{function_name}/g, analysis.functionName || 'solution')
-    .replace(/{function_params}/g, analysis.parameters.join(', '))
-    .replace(/{return_type}/g, analysis.returnType || 'auto')
-    .replace(/{language}/g, language.toLowerCase())
-    .replace(/{algorithm_pattern}/g, analysis.algorithmPattern)
-    .replace(/{test_input}/g, JSON.stringify(testCase.input))
-    .replace(/{expected_output}/g, JSON.stringify(testCase.output)) +
-    `\n\nUSER CODE TO INCLUDE (DO NOT MODIFY):\n\`\`\`${language}\n${userCode}\n\`\`\`\n\nTEST CASE TO HANDLE:\nInput: ${JSON.stringify(testCase.input)}\nExpected Output: ${JSON.stringify(testCase.output)}`;
+  return (
+    LEETCODE_WRAPPER_PROMPT.replace(
+      /{function_name}/g,
+      analysis.functionName || "solution"
+    )
+      .replace(/{function_params}/g, analysis.parameters.join(", "))
+      .replace(/{return_type}/g, analysis.returnType || "auto")
+      .replace(/{language}/g, language.toLowerCase())
+      .replace(/{algorithm_pattern}/g, analysis.algorithmPattern)
+      .replace(/{test_input}/g, JSON.stringify(testCase.input))
+      .replace(/{expected_output}/g, JSON.stringify(testCase.output)) +
+    `\n\nUSER CODE TO INCLUDE (DO NOT MODIFY):\n\`\`\`${language}\n${userCode}\n\`\`\`\n\nTEST CASE TO HANDLE:\nInput: ${JSON.stringify(testCase.input)}\nExpected Output: ${JSON.stringify(testCase.output)}`
+  );
 }
 
 // Enhanced code extraction with better language detection
-function extractCode(aiResponse: string, language: string = ''): string {
+function extractCode(aiResponse: string, language: string = ""): string {
   const lang = language.toLowerCase();
-  
+
   // Language-specific patterns with aliases
   const patterns = [
     // Exact language match
-    new RegExp(`\`\`\`${lang}\\s*([\\s\\S]*?)\`\`\``, 'i'),
+    new RegExp(`\`\`\`${lang}\\s*([\\s\\S]*?)\`\`\``, "i"),
     // Language aliases
-    ...(lang === 'cpp' ? [/```c\+\+\s*([\s\S]*?)```/i, /```cpp\s*([\s\S]*?)```/i] : []),
-    ...(lang === 'javascript' ? [/```js\s*([\s\S]*?)```/i, /```javascript\s*([\s\S]*?)```/i] : []),
-    ...(lang === 'typescript' ? [/```ts\s*([\s\S]*?)```/i, /```typescript\s*([\s\S]*?)```/i] : []),
-    ...(lang === 'python' ? [/```py\s*([\s\S]*?)```/i, /```python\s*([\s\S]*?)```/i] : []),
+    ...(lang === "cpp"
+      ? [/```c\+\+\s*([\s\S]*?)```/i, /```cpp\s*([\s\S]*?)```/i]
+      : []),
+    ...(lang === "javascript"
+      ? [/```js\s*([\s\S]*?)```/i, /```javascript\s*([\s\S]*?)```/i]
+      : []),
+    ...(lang === "typescript"
+      ? [/```ts\s*([\s\S]*?)```/i, /```typescript\s*([\s\S]*?)```/i]
+      : []),
+    ...(lang === "python"
+      ? [/```py\s*([\s\S]*?)```/i, /```python\s*([\s\S]*?)```/i]
+      : []),
     // Generic code block
-    /```\s*([\s\S]*?)```/
+    /```\s*([\s\S]*?)```/,
   ];
 
   // Try each pattern
@@ -657,7 +914,8 @@ function extractCode(aiResponse: string, language: string = ''): string {
     const match = pattern.exec(aiResponse);
     if (match && match[1]) {
       const extractedCode = match[1].trim();
-      if (extractedCode.length > 10) { // Minimum viable code length
+      if (extractedCode.length > 10) {
+        // Minimum viable code length
         return extractedCode;
       }
     }
@@ -665,45 +923,66 @@ function extractCode(aiResponse: string, language: string = ''): string {
 
   // Fallback: clean response
   return aiResponse
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/```/g, '')
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/```/g, "")
     .trim();
 }
 
 // Enhanced wrapper code generation with better error handling
-async function buildExecutableCode(userCode: string, language: string, testCase: any, analysis: CodeAnalysis): Promise<string> {
+async function buildExecutableCode(
+  userCode: string,
+  language: string,
+  testCase: any,
+  analysis: CodeAnalysis,
+  gemini: any
+): Promise<string> {
   try {
     console.log(`🤖 Generating wrapper code for ${language}...`);
-    
-    const prompt = buildWrapperPrompt({ userCode, language, testCase, analysis });
-    
+
+    const prompt = buildWrapperPrompt({
+      userCode,
+      language,
+      testCase,
+      analysis,
+    });
+
     const ai = await generateText({
       model: gemini("gemini-2.0-flash"),
       prompt,
       temperature: 0.0,
-      maxTokens: 3000
+      maxTokens: 3000,
     });
-    
+
     let code = extractCode(ai.text, language);
-    
-    console.log(`📝 Generated code (${code.length} chars):`, code.substring(0, 300) + "...");
-    
+
+    console.log(
+      `📝 Generated code (${code.length} chars):`,
+      code.substring(0, 300) + "..."
+    );
+
     // Validation checks
     const funcNameLower = analysis.functionName.toLowerCase();
     const codeLower = code.toLowerCase();
-    
+
     // Check if user code/function is included
-    if (!codeLower.includes(funcNameLower) && !codeLower.includes(userCode.substring(0, 50).toLowerCase())) {
-      console.warn("⚠️ AI didn't include user code properly, using enhanced fallback");
+    if (
+      !codeLower.includes(funcNameLower) &&
+      !codeLower.includes(userCode.substring(0, 50).toLowerCase())
+    ) {
+      console.warn(
+        "⚠️ AI didn't include user code properly, using enhanced fallback"
+      );
       return generateEnhancedFallback(userCode, language, testCase, analysis);
     }
-    
+
     // Language-specific validation
     if (!validateGeneratedCode(code, language, analysis)) {
-      console.warn("⚠️ Generated code failed validation, using enhanced fallback");
+      console.warn(
+        "⚠️ Generated code failed validation, using enhanced fallback"
+      );
       return generateEnhancedFallback(userCode, language, testCase, analysis);
     }
-    
+
     return code;
   } catch (err) {
     console.error("❌ AI generation failed:", err);
@@ -712,55 +991,73 @@ async function buildExecutableCode(userCode: string, language: string, testCase:
 }
 
 // Enhanced validation for generated code
-function validateGeneratedCode(code: string, language: string, analysis: CodeAnalysis): boolean {
+function validateGeneratedCode(
+  code: string,
+  language: string,
+  analysis: CodeAnalysis
+): boolean {
   const codeLower = code.toLowerCase();
-  
+
   switch (language.toLowerCase()) {
-    case 'java':
-      return codeLower.includes('public class') && codeLower.includes('public static void main');
-    case 'python':
-      return codeLower.includes('if __name__') || codeLower.includes('print(');
-    case 'cpp':
-      return codeLower.includes('#include') && codeLower.includes('int main');
-    case 'c':
-      return codeLower.includes('#include') && codeLower.includes('int main');
-    case 'go':
-      return codeLower.includes('package main') && codeLower.includes('func main');
-    case 'javascript':
-      return codeLower.includes('console.log') || codeLower.includes('function');
-    case 'typescript':
-      return codeLower.includes('console.log') || codeLower.includes('function');
+    case "java":
+      return (
+        codeLower.includes("public class") &&
+        codeLower.includes("public static void main")
+      );
+    case "python":
+      return codeLower.includes("if __name__") || codeLower.includes("print(");
+    case "cpp":
+      return codeLower.includes("#include") && codeLower.includes("int main");
+    case "c":
+      return codeLower.includes("#include") && codeLower.includes("int main");
+    case "go":
+      return (
+        codeLower.includes("package main") && codeLower.includes("func main")
+      );
+    case "javascript":
+      return (
+        codeLower.includes("console.log") || codeLower.includes("function")
+      );
+    case "typescript":
+      return (
+        codeLower.includes("console.log") || codeLower.includes("function")
+      );
     default:
       return true;
   }
 }
 
 // Enhanced fallback with better data structure support
-function generateEnhancedFallback(userCode: string, language: string, testCase: any, analysis: CodeAnalysis): string {
-  const funcName = analysis.functionName || 'solution';
+function generateEnhancedFallback(
+  userCode: string,
+  language: string,
+  testCase: any,
+  analysis: CodeAnalysis
+): string {
+  const funcName = analysis.functionName || "solution";
   const input = testCase.input;
   const needsConversion = analysis.needsConversion;
-  
+
   console.log(`🔧 Using enhanced fallback generator for ${language}`, {
     needsConversion,
     dataStructures: Array.from(analysis.dataStructures),
-    algorithmPattern: analysis.algorithmPattern
+    algorithmPattern: analysis.algorithmPattern,
   });
-  
+
   switch (language.toLowerCase()) {
-    case 'java':
+    case "java":
       return generateJavaWrapper(userCode, funcName, input, analysis);
-    case 'python':
+    case "python":
       return generatePythonWrapper(userCode, funcName, input, analysis);
-    case 'cpp':
+    case "cpp":
       return generateCppWrapper(userCode, funcName, input, analysis);
-    case 'c':
+    case "c":
       return generateCWrapper(userCode, funcName, input, analysis);
-    case 'go':
+    case "go":
       return generateGoWrapper(userCode, funcName, input, analysis);
-    case 'javascript':
+    case "javascript":
       return generateJavaScriptWrapper(userCode, funcName, input, analysis);
-    case 'typescript':
+    case "typescript":
       return generateTypeScriptWrapper(userCode, funcName, input, analysis);
     default:
       throw new Error(`Unsupported language: ${language}`);
@@ -768,7 +1065,12 @@ function generateEnhancedFallback(userCode: string, language: string, testCase: 
 }
 
 // Enhanced Java wrapper generator with data structure support
-function generateJavaWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
+function generateJavaWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
   // Extract user imports if present
   const userImports: string[] = [];
   const importRegex = /^import\s+[\w.*]+;\s*$/gm;
@@ -778,17 +1080,17 @@ function generateJavaWrapper(userCode: string, funcName: string, input: any[], a
   }
 
   // Remove user imports from userClassBody to avoid duplication
-  let userClassBody = userCode.replace(importRegex, '').trim();
+  let userClassBody = userCode.replace(importRegex, "").trim();
 
   // Always include java.util.* for helpers, but avoid duplicates
   const importsSet = new Set<string>(userImports);
   importsSet.add("import java.util.*;");
 
   // Data structure class definitions (ListNode, TreeNode, etc.)
-  let dataStructureClasses = '';
-  let helperMethods = '';
+  let dataStructureClasses = "";
+  let helperMethods = "";
 
-  if (analysis.dataStructures.has('ListNode')) {
+  if (analysis.dataStructures.has("ListNode")) {
     dataStructureClasses += `
     static class ListNode {
         int val;
@@ -820,7 +1122,7 @@ function generateJavaWrapper(userCode: string, funcName: string, input: any[], a
     }`;
   }
 
-  if (analysis.dataStructures.has('TreeNode')) {
+  if (analysis.dataStructures.has("TreeNode")) {
     dataStructureClasses += `
     static class TreeNode {
         int val;
@@ -858,16 +1160,18 @@ function generateJavaWrapper(userCode: string, funcName: string, input: any[], a
   }
 
   // Find the user's class name (assume always public, any name)
-  const classNameMatch = userClassBody.match(/public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/);
+  const classNameMatch = userClassBody.match(
+    /public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/
+  );
   const userClassName = classNameMatch ? classNameMatch[1] : "Solution";
 
   // Remove the user's public class wrapper, but keep the code inside
   if (classNameMatch) {
     userClassBody = userClassBody.replace(
       new RegExp(`public\\s+class\\s+${userClassName}\\s*\\{`),
-      ''
+      ""
     );
-    userClassBody = userClassBody.replace(/}\s*$/, '');
+    userClassBody = userClassBody.replace(/}\s*$/, "");
   }
 
   // Prepare input and output conversion code
@@ -876,7 +1180,7 @@ function generateJavaWrapper(userCode: string, funcName: string, input: any[], a
 
   // Compose the final Java code
   return `
-${Array.from(importsSet).join('\n')}
+${Array.from(importsSet).join("\n")}
 
 /**
  * LeetCode-like problem function for analysis and test generation.
@@ -906,20 +1210,25 @@ ${helperMethods}
 }
 
 // Enhanced Python wrapper generator
-function generatePythonWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
-  const hasListNode = analysis.dataStructures.has('ListNode');
-  const hasTreeNode = analysis.dataStructures.has('TreeNode');
-  
-  let dataStructureClasses = '';
-  let helperFunctions = '';
-  
+function generatePythonWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
+  const hasListNode = analysis.dataStructures.has("ListNode");
+  const hasTreeNode = analysis.dataStructures.has("TreeNode");
+
+  let dataStructureClasses = "";
+  let helperFunctions = "";
+
   if (hasListNode) {
     dataStructureClasses += `
 class ListNode:
     def __init__(self, val=0, next=None):
         self.val = val
         self.next = next`;
-    
+
     helperFunctions += `
 def array_to_list(arr):
     if not arr:
@@ -938,7 +1247,7 @@ def list_to_array(head):
         head = head.next
     return result`;
   }
-  
+
   if (hasTreeNode) {
     dataStructureClasses += `
 class TreeNode:
@@ -946,7 +1255,7 @@ class TreeNode:
         self.val = val
         self.left = left
         self.right = right`;
-    
+
     helperFunctions += `
 def array_to_tree(arr):
     if not arr or arr[0] is None:
@@ -966,10 +1275,10 @@ def array_to_tree(arr):
         i += 1
     return root`;
   }
-  
+
   const inputConversion = generatePythonInputConversion(input, analysis);
   const outputConversion = generatePythonOutputConversion(analysis);
-  
+
   return `
 ${dataStructureClasses}
 
@@ -984,105 +1293,134 @@ if __name__ == "__main__":
 }
 
 // Enhanced input conversion generators
-function generateJavaInputConversion(input: any[], analysis: CodeAnalysis): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    
-    if (analysis.dataStructures.has('ListNode') && Array.isArray(value)) {
-      return `        int[] arr${i} = {${value.join(', ')}};
+function generateJavaInputConversion(
+  input: any[],
+  analysis: CodeAnalysis
+): string {
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+
+      if (analysis.dataStructures.has("ListNode") && Array.isArray(value)) {
+        return `        int[] arr${i} = {${value.join(", ")}};
         ListNode ${varName} = arrayToList(arr${i});`;
-    }
-    
-    if (analysis.dataStructures.has('TreeNode') && Array.isArray(value)) {
-      const nullSafeArray = value.map((v: any) => v === null ? 'null' : v).join(', ');
-      return `        Integer[] arr${i} = {${nullSafeArray}};
-        TreeNode ${varName} = arrayToTree(arr${i});`;
-    }
-    
-    if (Array.isArray(value)) {
-      if (Array.isArray(value[0])) {
-        // 2D array (matrix)
-        const matrixStr = value.map((row: any[]) => `{${row.join(', ')}}`).join(', ');
-        return `        int[][] ${varName} = {${matrixStr}};`;
-      } else {
-        // 1D array
-        return `        int[] ${varName} = {${value.join(', ')}};`;
       }
-    }
-    
-    if (typeof value === 'string') {
-      return `        String ${varName} = "${value}";`;
-    }
-    
-    if (typeof value === 'number') {
-      return `        int ${varName} = ${value};`;
-    }
-    
-    return `        Object ${varName} = ${JSON.stringify(value)};`;
-  }).join('\n');
+
+      if (analysis.dataStructures.has("TreeNode") && Array.isArray(value)) {
+        const nullSafeArray = value
+          .map((v: any) => (v === null ? "null" : v))
+          .join(", ");
+        return `        Integer[] arr${i} = {${nullSafeArray}};
+        TreeNode ${varName} = arrayToTree(arr${i});`;
+      }
+
+      if (Array.isArray(value)) {
+        if (Array.isArray(value[0])) {
+          // 2D array (matrix)
+          const matrixStr = value
+            .map((row: any[]) => `{${row.join(", ")}}`)
+            .join(", ");
+          return `        int[][] ${varName} = {${matrixStr}};`;
+        } else {
+          // 1D array
+          return `        int[] ${varName} = {${value.join(", ")}};`;
+        }
+      }
+
+      if (typeof value === "string") {
+        return `        String ${varName} = "${value}";`;
+      }
+
+      if (typeof value === "number") {
+        return `        int ${varName} = ${value};`;
+      }
+
+      return `        Object ${varName} = ${JSON.stringify(value)};`;
+    })
+    .join("\n");
 }
 
-function generatePythonInputConversion(input: any[], analysis: CodeAnalysis): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    
-    if (analysis.dataStructures.has('ListNode') && Array.isArray(value)) {
-      return `    ${varName} = array_to_list(${JSON.stringify(value)})`;
-    }
-    
-    if (analysis.dataStructures.has('TreeNode') && Array.isArray(value)) {
-      return `    ${varName} = array_to_tree(${JSON.stringify(value)})`;
-    }
-    
-    return `    ${varName} = ${JSON.stringify(value)}`;
-  }).join('\n');
+function generatePythonInputConversion(
+  input: any[],
+  analysis: CodeAnalysis
+): string {
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+
+      if (analysis.dataStructures.has("ListNode") && Array.isArray(value)) {
+        return `    ${varName} = array_to_list(${JSON.stringify(value)})`;
+      }
+
+      if (analysis.dataStructures.has("TreeNode") && Array.isArray(value)) {
+        return `    ${varName} = array_to_tree(${JSON.stringify(value)})`;
+      }
+
+      return `    ${varName} = ${JSON.stringify(value)}`;
+    })
+    .join("\n");
 }
 
 // Enhanced output conversion generators
 function generateJavaOutputConversion(analysis: CodeAnalysis): string {
-  const paramList = Array.from({length: 10}, (_, i) => `param${i}`).join(', ');
+  const paramList = Array.from({ length: 10 }, (_, i) => `param${i}`).join(
+    ", "
+  );
   const funcCall = `solution.${analysis.functionName}(${paramList})`;
-  
-  if (analysis.dataStructures.has('ListNode') && analysis.returnType.toLowerCase().includes('listnode')) {
+
+  if (
+    analysis.dataStructures.has("ListNode") &&
+    analysis.returnType.toLowerCase().includes("listnode")
+  ) {
     return `        ListNode result = ${funcCall};
         int[] output = listToArray(result);
         System.out.println(java.util.Arrays.toString(output));`;
   }
-  
-  if (analysis.returnType.toLowerCase().includes('int[]') || analysis.returnType.toLowerCase().includes('array')) {
+
+  if (
+    analysis.returnType.toLowerCase().includes("int[]") ||
+    analysis.returnType.toLowerCase().includes("array")
+  ) {
     return `        int[] result = ${funcCall};
         System.out.println(java.util.Arrays.toString(result));`;
   }
-  
+
   return `        Object result = ${funcCall};
         System.out.println(result);`;
 }
 
 function generatePythonOutputConversion(analysis: CodeAnalysis): string {
-  const paramList = Array.from({length: 10}, (_, i) => `param${i}`).join(', ');
+  const paramList = Array.from({ length: 10 }, (_, i) => `param${i}`).join(
+    ", "
+  );
   const funcCall = `${analysis.functionName}(${paramList})`;
-  
-  if (analysis.dataStructures.has('ListNode')) {
+
+  if (analysis.dataStructures.has("ListNode")) {
     return `    result = ${funcCall}
     if isinstance(result, ListNode):
         result = list_to_array(result)
     print(result)`;
   }
-  
+
   return `    result = ${funcCall}
     print(result)`;
 }
 
 // Additional wrapper generators for other languages
-function generateCppWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
+function generateCppWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
   let includes = `#include <iostream>
 #include <vector>
 #include <string>`;
-  
-  let dataStructures = '';
-  let helpers = '';
-  
-  if (analysis.dataStructures.has('ListNode')) {
+
+  let dataStructures = "";
+  let helpers = "";
+
+  if (analysis.dataStructures.has("ListNode")) {
     dataStructures += `
 struct ListNode {
     int val;
@@ -1091,7 +1429,7 @@ struct ListNode {
     ListNode(int x) : val(x), next(nullptr) {}
     ListNode(int x, ListNode *next) : val(x), next(next) {}
 };`;
-    
+
     helpers += `
 ListNode* arrayToList(std::vector<int>& arr) {
     if (arr.empty()) return nullptr;
@@ -1104,9 +1442,9 @@ ListNode* arrayToList(std::vector<int>& arr) {
     return head;
 }`;
   }
-  
+
   const inputCode = generateCppInputs(input);
-  
+
   return `
 ${includes}
 using namespace std;
@@ -1119,13 +1457,18 @@ ${helpers}
 
 int main() {
 ${inputCode}
-    auto result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+    auto result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")});
     cout << result << endl;
     return 0;
 }`.trim();
 }
 
-function generateCWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
+function generateCWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
   return `
 #include <stdio.h>
 #include <stdlib.h>
@@ -1134,13 +1477,18 @@ ${userCode}
 
 int main() {
     ${generateCInputs(input)}
-    int result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+    int result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")});
     printf("%d\\n", result);
     return 0;
 }`.trim();
 }
 
-function generateGoWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
+function generateGoWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
   return `
 package main
 import "fmt"
@@ -1149,16 +1497,21 @@ ${userCode}
 
 func main() {
     ${generateGoInputs(input)}
-    result := ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')})
+    result := ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")})
     fmt.Println(result)
 }`.trim();
 }
 
-function generateJavaScriptWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
-  let dataStructures = '';
-  let helpers = '';
-  
-  if (analysis.dataStructures.has('ListNode')) {
+function generateJavaScriptWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
+  let dataStructures = "";
+  let helpers = "";
+
+  if (analysis.dataStructures.has("ListNode")) {
     dataStructures += `
 class ListNode {
     constructor(val, next) {
@@ -1166,7 +1519,7 @@ class ListNode {
         this.next = (next===undefined ? null : next);
     }
 }`;
-    
+
     helpers += `
 function arrayToList(arr) {
     if (!arr || arr.length === 0) return null;
@@ -1188,17 +1541,17 @@ function listToArray(head) {
     return result;
 }`;
   }
-  
+
   const inputCode = generateJavaScriptInputs(input);
-  const outputCode = analysis.dataStructures.has('ListNode') ? 
-    `let result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+  const outputCode = analysis.dataStructures.has("ListNode")
+    ? `let result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")});
     if (result && typeof result === 'object' && result.val !== undefined) {
         result = listToArray(result);
     }
-    console.log(JSON.stringify(result));` :
-    `const result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+    console.log(JSON.stringify(result));`
+    : `const result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")});
     console.log(JSON.stringify(result));`;
-  
+
   return `
 ${dataStructures}
 
@@ -1214,11 +1567,16 @@ ${inputCode}
 `.trim();
 }
 
-function generateTypeScriptWrapper(userCode: string, funcName: string, input: any[], analysis: CodeAnalysis): string {
-  let dataStructures = '';
-  let helpers = '';
-  
-  if (analysis.dataStructures.has('ListNode')) {
+function generateTypeScriptWrapper(
+  userCode: string,
+  funcName: string,
+  input: any[],
+  analysis: CodeAnalysis
+): string {
+  let dataStructures = "";
+  let helpers = "";
+
+  if (analysis.dataStructures.has("ListNode")) {
     dataStructures += `
 class ListNode {
     val: number;
@@ -1228,7 +1586,7 @@ class ListNode {
         this.next = (next===undefined ? null : next);
     }
 }`;
-    
+
     helpers += `
 function arrayToList(arr: number[]): ListNode | null {
     if (!arr || arr.length === 0) return null;
@@ -1250,17 +1608,17 @@ function listToArray(head: ListNode | null): number[] {
     return result;
 }`;
   }
-  
+
   const inputCode = generateTypeScriptInputs(input);
-  const outputCode = analysis.dataStructures.has('ListNode') ? 
-    `let result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+  const outputCode = analysis.dataStructures.has("ListNode")
+    ? `let result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")});
     if (result && typeof result === 'object' && (result as any).val !== undefined) {
         result = listToArray(result as ListNode);
     }
-    console.log(JSON.stringify(result));` :
-    `const result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(', ')});
+    console.log(JSON.stringify(result));`
+    : `const result = ${funcName}(${input.map((_value: any, i: number) => `param${i}`).join(", ")});
     console.log(JSON.stringify(result));`;
-  
+
   return `
 ${dataStructures}
 
@@ -1278,97 +1636,125 @@ ${inputCode}
 
 // Enhanced input generators for fallback
 function generateCppInputs(input: any[]): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    if (Array.isArray(value)) {
-      if (Array.isArray(value[0])) {
-        // 2D vector
-        const matrixStr = value.map((row: any[]) => `{${row.join(', ')}}`).join(', ');
-        return `    vector<vector<int>> ${varName} = {${matrixStr}};`;
-      } else {
-        // 1D vector
-        return `    vector<int> ${varName} = {${value.join(', ')}};`;
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+      if (Array.isArray(value)) {
+        if (Array.isArray(value[0])) {
+          // 2D vector
+          const matrixStr = value
+            .map((row: any[]) => `{${row.join(", ")}}`)
+            .join(", ");
+          return `    vector<vector<int>> ${varName} = {${matrixStr}};`;
+        } else {
+          // 1D vector
+          return `    vector<int> ${varName} = {${value.join(", ")}};`;
+        }
       }
-    }
-    if (typeof value === 'number') return `    int ${varName} = ${value};`;
-    if (typeof value === 'string') return `    string ${varName} = "${value}";`;
-    return `    auto ${varName} = ${value};`;
-  }).join('\n');
+      if (typeof value === "number") return `    int ${varName} = ${value};`;
+      if (typeof value === "string")
+        return `    string ${varName} = "${value}";`;
+      return `    auto ${varName} = ${value};`;
+    })
+    .join("\n");
 }
 
 function generateCInputs(input: any[]): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    if (typeof value === 'number') return `    int ${varName} = ${value};`;
-    return `    int ${varName} = ${value};`;
-  }).join('\n');
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+      if (typeof value === "number") return `    int ${varName} = ${value};`;
+      return `    int ${varName} = ${value};`;
+    })
+    .join("\n");
 }
 
 function generateGoInputs(input: any[]): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    if (Array.isArray(value)) {
-      if (Array.isArray(value[0])) {
-        // 2D slice
-        const matrixStr = value.map((row: any[]) => `{${row.join(', ')}}`).join(', ');
-        return `    ${varName} := [][]int{${matrixStr}}`;
-      } else {
-        // 1D slice
-        return `    ${varName} := []int{${value.join(', ')}}`;
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+      if (Array.isArray(value)) {
+        if (Array.isArray(value[0])) {
+          // 2D slice
+          const matrixStr = value
+            .map((row: any[]) => `{${row.join(", ")}}`)
+            .join(", ");
+          return `    ${varName} := [][]int{${matrixStr}}`;
+        } else {
+          // 1D slice
+          return `    ${varName} := []int{${value.join(", ")}}`;
+        }
       }
-    }
-    if (typeof value === 'number') return `    ${varName} := ${value}`;
-    if (typeof value === 'string') return `    ${varName} := "${value}"`;
-    return `    ${varName} := ${value}`;
-  }).join('\n');
+      if (typeof value === "number") return `    ${varName} := ${value}`;
+      if (typeof value === "string") return `    ${varName} := "${value}"`;
+      return `    ${varName} := ${value}`;
+    })
+    .join("\n");
 }
 
 function generateJavaScriptInputs(input: any[]): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    return `    const ${varName} = ${JSON.stringify(value)};`;
-  }).join('\n');
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+      return `    const ${varName} = ${JSON.stringify(value)};`;
+    })
+    .join("\n");
 }
 
 function generateTypeScriptInputs(input: any[]): string {
-  return input.map((value, i) => {
-    const varName = `param${i}`;
-    let type = 'any';
-    
-    if (Array.isArray(value)) {
-      if (Array.isArray(value[0])) {
-        type = 'number[][]';
-      } else {
-        type = typeof value[0] === 'number' ? 'number[]' : 
-             typeof value[0] === 'string' ? 'string[]' : 'any[]';
+  return input
+    .map((value, i) => {
+      const varName = `param${i}`;
+      let type = "any";
+
+      if (Array.isArray(value)) {
+        if (Array.isArray(value[0])) {
+          type = "number[][]";
+        } else {
+          type =
+            typeof value[0] === "number"
+              ? "number[]"
+              : typeof value[0] === "string"
+                ? "string[]"
+                : "any[]";
+        }
+      } else if (typeof value === "number") {
+        type = "number";
+      } else if (typeof value === "string") {
+        type = "string";
+      } else if (typeof value === "boolean") {
+        type = "boolean";
       }
-    } else if (typeof value === 'number') {
-      type = 'number';
-    } else if (typeof value === 'string') {
-      type = 'string';
-    } else if (typeof value === 'boolean') {
-      type = 'boolean';
-    }
-    
-    return `    const ${varName}: ${type} = ${JSON.stringify(value)};`;
-  }).join('\n');
+
+      return `    const ${varName}: ${type} = ${JSON.stringify(value)};`;
+    })
+    .join("\n");
 }
 
 function forceMainClass(src: string): string {
   const re = /\bpublic\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/;
   return re.test(src)
     ? src.replace(re, (_, name) =>
-        name === "Main" ? `public class Main` : `public class Main`)
-    : src;                       // no public class found → leave unchanged
+        name === "Main" ? `public class Main` : `public class Main`
+      )
+    : src; // no public class found → leave unchanged
 }
 // Enhanced Judge0 execution with retry logic
-async function executeCode({ code, language }: { code: string; language: string }, retries = 2) {
+async function executeCode(
+  { code, language }: { code: string; language: string },
+  retries = 2
+) {
   const langId = LANGUAGE_MAP[language.toLowerCase()];
   if (!langId) throw new Error("Unsupported language");
 
-  console.log(`🚀 Executing ${language} code on Judge0 (attempt ${3 - retries}/3)...`);
-  console.log(`📝 Code to execute (${code.length} chars):`, code.substring(0, 500) + "...");
-const patchedCode =
+  console.log(
+    `🚀 Executing ${language} code on Judge0 (attempt ${3 - retries}/3)...`
+  );
+  console.log(
+    `📝 Code to execute (${code.length} chars):`,
+    code.substring(0, 500) + "..."
+  );
+  const patchedCode =
     language.toLowerCase() === "java" ? forceMainClass(code) : code;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -1377,7 +1763,7 @@ const patchedCode =
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-RapidAPI-Key": JUDGE0_KEY,
+          "X-RapidAPI-Key": JUDGE0_KEY!,
           "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
         },
         body: JSON.stringify({
@@ -1386,20 +1772,22 @@ const patchedCode =
           stdin: "",
           expected_output: "",
           cpu_time_limit: 2,
-          memory_limit: 128000
+          memory_limit: 128000,
         }),
       });
 
       if (!res.ok) {
         const errorText = await res.text();
         console.error(`❌ Judge0 API Error: ${res.status} - ${errorText}`);
-        
+
         if (attempt < retries && (res.status === 429 || res.status >= 500)) {
           console.log(`⏳ Retrying in ${(attempt + 1) * 1000}ms...`);
-          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000));
+          await new Promise((resolve) =>
+            setTimeout(resolve, (attempt + 1) * 1000)
+          );
           continue;
         }
-        
+
         throw new Error(`Judge0 API Error: ${res.status} - ${errorText}`);
       }
 
@@ -1410,19 +1798,24 @@ const patchedCode =
         memory: result.memory,
         stdout: result.stdout?.substring(0, 200),
         stderr: result.stderr?.substring(0, 200),
-        compile_output: result.compile_output?.substring(0, 200)
+        compile_output: result.compile_output?.substring(0, 200),
       });
 
       return result;
     } catch (error) {
-      console.error(`💥 Judge0 execution failed (attempt ${attempt + 1}):`, error);
-      
+      console.error(
+        `💥 Judge0 execution failed (attempt ${attempt + 1}):`,
+        error
+      );
+
       if (attempt < retries) {
         console.log(`⏳ Retrying in ${(attempt + 1) * 1000}ms...`);
-        await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 1000));
+        await new Promise((resolve) =>
+          setTimeout(resolve, (attempt + 1) * 1000)
+        );
         continue;
       }
-      
+
       throw error;
     }
   }
@@ -1432,52 +1825,54 @@ const patchedCode =
 function compareOutputs(actual: string, expected: any): boolean {
   try {
     const actualTrim = actual.trim();
-    
+
     // Handle different output formats
-    if (typeof expected === 'boolean') {
+    if (typeof expected === "boolean") {
       return actualTrim.toLowerCase() === expected.toString().toLowerCase();
     }
-    
-    if (typeof expected === 'number') {
+
+    if (typeof expected === "number") {
       const actualNum = parseFloat(actualTrim);
       return !isNaN(actualNum) && Math.abs(actualNum - expected) < 1e-9;
     }
-    
-    if (typeof expected === 'string') {
+
+    if (typeof expected === "string") {
       return actualTrim === expected.trim();
     }
-    
+
     if (Array.isArray(expected)) {
       // Handle array outputs
       const expectedStr = JSON.stringify(expected);
-      
+
       // Direct match
       if (actualTrim === expectedStr) return true;
-      
+
       // Handle different spacing: [1,2,3] vs [1, 2, 3]
-      const normalizedActual = actualTrim.replace(/\s+/g, '').replace(/'/g, '"');
-      const normalizedExpected = expectedStr.replace(/\s+/g, '');
+      const normalizedActual = actualTrim
+        .replace(/\s+/g, "")
+        .replace(/'/g, '"');
+      const normalizedExpected = expectedStr.replace(/\s+/g, "");
       if (normalizedActual === normalizedExpected) return true;
-      
+
       // Try parsing as JSON
       try {
         const actualParsed = JSON.parse(actualTrim);
         return JSON.stringify(actualParsed) === expectedStr;
       } catch {
         // Handle array-like strings without brackets
-        if (!actualTrim.startsWith('[') && !actualTrim.startsWith('{')) {
-          const elements = actualTrim.split(/[,\s]+/).filter(e => e);
-          const parsedElements = elements.map(e => {
+        if (!actualTrim.startsWith("[") && !actualTrim.startsWith("{")) {
+          const elements = actualTrim.split(/[,\s]+/).filter((e) => e);
+          const parsedElements = elements.map((e) => {
             const num = parseFloat(e);
-            return isNaN(num) ? e.replace(/"/g, '') : num;
+            return isNaN(num) ? e.replace(/"/g, "") : num;
           });
           return JSON.stringify(parsedElements) === expectedStr;
         }
       }
     }
-    
+
     // Handle object outputs
-    if (typeof expected === 'object' && expected !== null) {
+    if (typeof expected === "object" && expected !== null) {
       try {
         const actualParsed = JSON.parse(actualTrim);
         return JSON.stringify(actualParsed) === JSON.stringify(expected);
@@ -1485,12 +1880,11 @@ function compareOutputs(actual: string, expected: any): boolean {
         return false;
       }
     }
-    
+
     // Fallback to string comparison
     return actualTrim === String(expected).trim();
-    
   } catch (error) {
-    console.error('❌ Output comparison error:', error);
+    console.error("❌ Output comparison error:", error);
     return false;
   }
 }
@@ -1501,40 +1895,49 @@ function formatError(error: string, language: string): string {
   const errorPatterns = [
     {
       pattern: /compilation terminated/i,
-      message: "Code compilation failed. Check your syntax and ensure all required imports/includes are present."
+      message:
+        "Code compilation failed. Check your syntax and ensure all required imports/includes are present.",
     },
     {
       pattern: /cannot find symbol/i,
-      message: "Variable or method not found. Check spelling and ensure all variables are declared."
+      message:
+        "Variable or method not found. Check spelling and ensure all variables are declared.",
     },
     {
       pattern: /undefined reference/i,
-      message: "Function or variable not defined. Make sure all functions are properly declared."
+      message:
+        "Function or variable not defined. Make sure all functions are properly declared.",
     },
     {
       pattern: /segmentation fault/i,
-      message: "Memory access error. Check for null pointer access or array bounds violations."
+      message:
+        "Memory access error. Check for null pointer access or array bounds violations.",
     },
     {
       pattern: /index out of bounds/i,
-      message: "Array index error. Ensure you're not accessing beyond array boundaries."
+      message:
+        "Array index error. Ensure you're not accessing beyond array boundaries.",
     },
     {
       pattern: /null pointer/i,
-      message: "Null reference error. Check for null values before accessing object properties."
+      message:
+        "Null reference error. Check for null values before accessing object properties.",
     },
     {
       pattern: /syntax error/i,
-      message: "Syntax error detected. Review your code structure and punctuation."
+      message:
+        "Syntax error detected. Review your code structure and punctuation.",
     },
     {
       pattern: /time limit exceeded/i,
-      message: "Code execution took too long. Consider optimizing your algorithm or check for infinite loops."
+      message:
+        "Code execution took too long. Consider optimizing your algorithm or check for infinite loops.",
     },
     {
       pattern: /runtime error/i,
-      message: "Runtime error occurred during execution. Check your logic and handle edge cases."
-    }
+      message:
+        "Runtime error occurred during execution. Check your logic and handle edge cases.",
+    },
   ];
 
   for (const { pattern, message } of errorPatterns) {
@@ -1548,52 +1951,104 @@ function formatError(error: string, language: string): string {
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     console.log(`🎯 Starting enhanced code execution request...`);
-    
-    const { code, language = 'java', testCase } = await req.json();
-    
+
+    const {
+      code,
+      language = "java",
+      testCase,
+      judge0ApiKey: clientJudge0ApiKey,
+      geminiApiKey: clientGeminiApiKey,
+    } = await req.json();
+    const keyInfo = await getApiKeys(req);
+    const geminiKey =
+      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
+
+    // Check if key available
+    if (!geminiKey) {
+      return Response.json(
+        {
+          error: "NO_API_KEY",
+          message: keyInfo.error || "Gemini API key required",
+          mode: keyInfo.mode,
+        },
+        { status: 401 }
+      );
+    }
+    const judge0Key =
+      keyInfo.mode === "local" ? clientJudge0ApiKey : keyInfo.judge0Key;
+
+    // Check if key available
+    if (!judge0Key) {
+      return Response.json(
+        {
+          error: "NO_API_KEY",
+          message: keyInfo.error || "Gemini API key required",
+          mode: keyInfo.mode,
+        },
+        { status: 401 }
+      );
+    }
+    JUDGE0_KEY = judge0Key;
+    const gemini = createGoogleGenerativeAI({
+      apiKey: geminiKey,
+    });
+
     // Enhanced validation with detailed logging
     if (!LANGUAGE_MAP[language.toLowerCase()]) {
       console.log(`❌ Unsupported language: ${language}`);
-      return NextResponse.json({
-        error: `Unsupported language: ${language}`,
-        supported: Object.keys(LANGUAGE_MAP),
-        details: `Language '${language}' is not supported. Please use one of: ${Object.keys(LANGUAGE_MAP).join(', ')}`,
-        suggestions: [
-          "Check the language spelling",
-          "Use lowercase language names",
-          "Supported languages: " + Object.keys(LANGUAGE_MAP).join(', ')
-        ]
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: `Unsupported language: ${language}`,
+          supported: Object.keys(LANGUAGE_MAP),
+          details: `Language '${language}' is not supported. Please use one of: ${Object.keys(LANGUAGE_MAP).join(", ")}`,
+          suggestions: [
+            "Check the language spelling",
+            "Use lowercase language names",
+            "Supported languages: " + Object.keys(LANGUAGE_MAP).join(", "),
+          ],
+        },
+        { status: 400 }
+      );
     }
 
-    if (!code || !testCase || !testCase.input || testCase.output === undefined) {
-      console.log(`❌ Missing required fields:`, { 
-        hasCode: !!code, 
-        hasTestCase: !!testCase, 
-        hasInput: !!testCase?.input, 
-        hasOutput: testCase?.output !== undefined 
+    if (
+      !code ||
+      !testCase ||
+      !testCase.input ||
+      testCase.output === undefined
+    ) {
+      console.log(`❌ Missing required fields:`, {
+        hasCode: !!code,
+        hasTestCase: !!testCase,
+        hasInput: !!testCase?.input,
+        hasOutput: testCase?.output !== undefined,
       });
-      return NextResponse.json({
-        error: "Missing required fields: code, testCase with input and output",
-        details: "Please provide code and testCase with input and output fields",
-        received: {
-          code: !!code,
-          testCase: !!testCase,
-          input: !!testCase?.input,
-          output: testCase?.output !== undefined
+      return NextResponse.json(
+        {
+          error:
+            "Missing required fields: code, testCase with input and output",
+          details:
+            "Please provide code and testCase with input and output fields",
+          received: {
+            code: !!code,
+            testCase: !!testCase,
+            input: !!testCase?.input,
+            output: testCase?.output !== undefined,
+          },
+          example: {
+            code: "function twoSum(nums, target) { /* your code */ }",
+            language: "javascript",
+            testCase: {
+              input: [[2, 7, 11, 15], 9],
+              output: [0, 1],
+            },
+          },
         },
-        example: {
-          code: "function twoSum(nums, target) { /* your code */ }",
-          language: "javascript",
-          testCase: {
-            input: [[2,7,11,15], 9],
-            output: [0,1]
-          }
-        }
-      }, { status: 400 });
+        { status: 400 }
+      );
     }
 
     console.log(`✅ Processing enhanced code execution:`, {
@@ -1601,59 +2056,65 @@ export async function POST(req: NextRequest) {
       codeLength: code.length,
       testInput: testCase.input,
       expectedOutput: testCase.output,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     // Enhanced code analysis with detailed logging
     const analysis = analyzeUserCode(code, language);
-    
+
     if (!analysis.functionName) {
       console.log(`❌ No function detected in code`);
-      
+
       // Provide language-specific guidance
       const languageGuidance: Record<string, string[]> = {
         java: [
           "Ensure your function is inside a class",
           "Use format: public ReturnType functionName(params) { }",
-          "Avoid using 'main' as the function name"
+          "Avoid using 'main' as the function name",
         ],
         python: [
           "Use format: def function_name(params):",
           "Avoid using __main__ or dunder methods as function names",
-          "Make sure indentation is correct"
+          "Make sure indentation is correct",
         ],
         cpp: [
           "Use format: returnType functionName(params) { }",
           "Include necessary headers like #include <iostream>",
-          "Avoid using 'main' as the function name"
+          "Avoid using 'main' as the function name",
         ],
         javascript: [
           "Use format: function functionName(params) { }",
           "Or: const functionName = (params) => { }",
-          "Avoid using 'main' or console methods as function names"
+          "Avoid using 'main' or console methods as function names",
         ],
         typescript: [
           "Use format: function functionName(params): returnType { }",
           "Or: const functionName = (params): returnType => { }",
-          "Include proper type annotations"
-        ]
-      };
-      
-      return NextResponse.json({
-        error: "No valid function found in the code",
-        details: `Could not detect a testable function in ${language} code. Make sure your code contains a complete function definition.`,
-        suggestions: languageGuidance[language.toLowerCase()] || [
-          "Ensure your function has proper syntax for the language",
-          "Check that the function is not named 'main' or other excluded names",
-          "Verify the function has a complete signature with parameters and body"
+          "Include proper type annotations",
         ],
-        analysisDebug: process.env.NODE_ENV === 'development' ? {
-          detectedFunctions: "None found",
-          codePreview: code.substring(0, 200) + "..."
-        } : undefined
-      }, { status: 400 });
+      };
+
+      return NextResponse.json(
+        {
+          error: "No valid function found in the code",
+          details: `Could not detect a testable function in ${language} code. Make sure your code contains a complete function definition.`,
+          suggestions: languageGuidance[language.toLowerCase()] || [
+            "Ensure your function has proper syntax for the language",
+            "Check that the function is not named 'main' or other excluded names",
+            "Verify the function has a complete signature with parameters and body",
+          ],
+          analysisDebug:
+            process.env.NODE_ENV === "development"
+              ? {
+                  detectedFunctions: "None found",
+                  codePreview: code.substring(0, 200) + "...",
+                }
+              : undefined,
+        },
+        { status: 400 }
+      );
     }
-    
+
     console.log(`🎉 Enhanced Function Analysis Complete:`, {
       name: analysis.functionName,
       language: analysis.language,
@@ -1663,34 +2124,48 @@ export async function POST(req: NextRequest) {
       dataStructures: Array.from(analysis.dataStructures),
       algorithmPattern: analysis.algorithmPattern,
       needsConversion: analysis.needsConversion,
-      isStatic: analysis.isStatic
+      isStatic: analysis.isStatic,
     });
 
     // Generate wrapper code with enhanced error handling
     let executableCode: string;
     try {
-      executableCode = await buildExecutableCode(code, language, testCase, analysis);
-      console.log(`✅ Generated wrapper code successfully (${executableCode.length} chars)`);
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log("Generated executable code preview:", executableCode.substring(0, 500) + "...");
+      executableCode = await buildExecutableCode(
+        code,
+        language,
+        testCase,
+        analysis,
+        gemini
+      );
+      console.log(
+        `✅ Generated wrapper code successfully (${executableCode.length} chars)`
+      );
+
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          "Generated executable code preview:",
+          executableCode.substring(0, 500) + "..."
+        );
       }
     } catch (wrapperError: any) {
       console.error("❌ Wrapper generation failed:", wrapperError);
-      return NextResponse.json({
-        error: "Failed to generate executable wrapper code",
-        details: wrapperError.message,
-        suggestions: [
-          "Check if your function signature is properly formatted",
-          "Ensure all required data structures are properly defined",
-          "Verify the function parameters match the test case input format"
-        ],
-        functionAnalysis: {
-          detectedFunction: analysis.functionName,
-          parameters: analysis.parameters,
-          algorithmPattern: analysis.algorithmPattern
-        }
-      }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Failed to generate executable wrapper code",
+          details: wrapperError.message,
+          suggestions: [
+            "Check if your function signature is properly formatted",
+            "Ensure all required data structures are properly defined",
+            "Verify the function parameters match the test case input format",
+          ],
+          functionAnalysis: {
+            detectedFunction: analysis.functionName,
+            parameters: analysis.parameters,
+            algorithmPattern: analysis.algorithmPattern,
+          },
+        },
+        { status: 500 }
+      );
     }
 
     // Execute code on Judge0 with retry logic
@@ -1703,20 +2178,25 @@ export async function POST(req: NextRequest) {
         time: result.time,
         memory: result.memory,
         hasOutput: !!result.stdout,
-        hasError: !!(result.stderr || result.compile_output)
+        hasError: !!(result.stderr || result.compile_output),
       });
     } catch (executionError: any) {
       console.error("❌ Judge0 execution failed:", executionError);
-      return NextResponse.json({
-        error: "Code execution failed on Judge0",
-        details: executionError.message,
-        suggestions: [
-          "Check if the Judge0 service is available",
-          "Verify your code compiles without errors",
-          "Ensure the generated wrapper code is valid"
-        ],
-        retryable: executionError.message.includes('429') || executionError.message.includes('50')
-      }, { status: 503 });
+      return NextResponse.json(
+        {
+          error: "Code execution failed on Judge0",
+          details: executionError.message,
+          suggestions: [
+            "Check if the Judge0 service is available",
+            "Verify your code compiles without errors",
+            "Ensure the generated wrapper code is valid",
+          ],
+          retryable:
+            executionError.message.includes("429") ||
+            executionError.message.includes("50"),
+        },
+        { status: 503 }
+      );
     }
 
     // Enhanced result processing
@@ -1726,9 +2206,15 @@ export async function POST(req: NextRequest) {
 
     // Process compilation errors
     if (result.compile_output?.trim()) {
-      error = formatError(`Compilation Error: ${result.compile_output}`, language);
+      error = formatError(
+        `Compilation Error: ${result.compile_output}`,
+        language
+      );
       executionStatus = "compilation_error";
-      console.log(`❌ Compilation Error:`, result.compile_output.substring(0, 200));
+      console.log(
+        `❌ Compilation Error:`,
+        result.compile_output.substring(0, 200)
+      );
     }
     // Process runtime errors
     else if (result.stderr?.trim()) {
@@ -1759,7 +2245,7 @@ export async function POST(req: NextRequest) {
       executionTime: result.time || 0,
       memoryUsage: result.memory || 0,
       codeSize: code.length,
-      wrapperSize: executableCode.length
+      wrapperSize: executableCode.length,
     };
 
     console.log(`🏁 Enhanced Final Result:`, {
@@ -1768,7 +2254,7 @@ export async function POST(req: NextRequest) {
       expectedOutput: JSON.stringify(testCase.output).substring(0, 100),
       executionStatus,
       performanceMetrics,
-      error: error?.substring(0, 100)
+      error: error?.substring(0, 100),
     });
 
     // Comprehensive response
@@ -1778,16 +2264,16 @@ export async function POST(req: NextRequest) {
       expectedOutput: testCase.output,
       passed,
       error,
-      fullCode:executableCode,
-      
+      fullCode: executableCode,
+
       // Execution Details
       language,
       executionStatus,
       executionTime: result.time,
       memoryUsage: result.memory,
-      status: result.status?.description || 'Unknown',
+      status: result.status?.description || "Unknown",
       statusId: result.status?.id,
-      
+
       // Function Analysis
       functionTested: analysis.functionName,
       functionParameters: analysis.parameters,
@@ -1796,46 +2282,53 @@ export async function POST(req: NextRequest) {
       dataStructuresUsed: Array.from(analysis.dataStructures),
       needsDataConversion: analysis.needsConversion,
       isStaticMethod: analysis.isStatic,
-      
+
       // Performance Metrics
       performanceMetrics,
-      
+
       // Debug Information (development only)
-      debug: process.env.NODE_ENV === 'development' ? {
-        executableCode,
-        judge0Response: {
-          stdout: result.stdout,
-          stderr: result.stderr,
-          compile_output: result.compile_output
-        },
-        analysisDetails: analysis
-      } : undefined,
-      
+      debug:
+        process.env.NODE_ENV === "development"
+          ? {
+              executableCode,
+              judge0Response: {
+                stdout: result.stdout,
+                stderr: result.stderr,
+                compile_output: result.compile_output,
+              },
+              analysisDetails: analysis,
+            }
+          : undefined,
+
       // Metadata
       timestamp: new Date().toISOString(),
-      version: "2.0.0"
+      version: "2.0.0",
     });
-
   } catch (error: any) {
     const processingTime = Date.now() - startTime;
     console.error("💥 System Error:", error);
-    
+
     // Enhanced error response
-    return NextResponse.json({
-      error: `System Error: ${error.message}`,
-      details: error.stack || "Unknown system error occurred",
-      errorType: error.name || "UnknownError",
-      suggestions: [
-        "Check if all required environment variables are set",
-        "Verify the request format matches the expected schema",
-        "Try again in a few moments if this is a temporary issue"
-      ],
-      performanceMetrics: {
-        processingTime,
-        failedAt: "system_level"
+    return NextResponse.json(
+      {
+        error: `System Error: ${error.message}`,
+        details: error.stack || "Unknown system error occurred",
+        errorType: error.name || "UnknownError",
+        suggestions: [
+          "Check if all required environment variables are set",
+          "Verify the request format matches the expected schema",
+          "Try again in a few moments if this is a temporary issue",
+        ],
+        performanceMetrics: {
+          processingTime,
+          failedAt: "system_level",
+        },
+        timestamp: new Date().toISOString(),
+        retryable:
+          !error.message.includes("validation") &&
+          !error.message.includes("format"),
       },
-      timestamp: new Date().toISOString(),
-      retryable: !error.message.includes('validation') && !error.message.includes('format')
-    }, { status: 500 });
+      { status: 500 }
+    );
   }
 }

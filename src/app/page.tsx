@@ -13,6 +13,9 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence, useMotionValue, useDragControls, MotionValue, DragControls } from "framer-motion";
+import { useCredentialsStore } from "@/components/root/credentialsStore";
+import BYOKDialog from "@/components/root/BYOKDialog";
+import { useSessionSync } from "@/components/root/useSessionSync";
 
 type ViewMode = 'normal' | 'code';
 
@@ -355,10 +358,12 @@ export default function Home() {
       }
     }
   };
-
+  useSessionSync();
+  const { hasApiKeys } = useCredentialsStore();
   return (
     <Providers>
       <div className="lg:hidden"><MobileNotSupported /></div>
+      <BYOKDialog open={!hasApiKeys()} onOpenChange={() => { }} />
       <motion.div ref={containerRef} className="hidden lg:flex flex-col h-screen relative overflow-hidden" variants={containerVariants} animate={viewMode} initial={false}>
         <AnimatePresence mode="wait">
           {viewMode === 'normal' && (

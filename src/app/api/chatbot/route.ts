@@ -2,10 +2,7 @@
 import { NextRequest } from "next/server";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText } from "ai";
-
-const gemini = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY!,
-});
+import { getApiKeys } from "@/lib/getApiKeys";
 
 const dsaChatbotPrompt = `
 You are an elite DSA (Data Structures & Algorithms) Expert and Coding Mentor with deep expertise in competitive programming and software engineering interviews.
@@ -103,26 +100,46 @@ Remember: Every interaction should leave the user feeling more confident and kno
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, currentTab } = await req.json();
+    const { messages, currentTab, clientGeminiApiKey } = await req.json();
+    const keyInfo = await getApiKeys(req);
+    const geminiKey =
+      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
+    console.log(geminiKey);
+    // Check if key available
+    if (!geminiKey) {
+      return Response.json(
+        {
+          error: "NO_API_KEY",
+          message: keyInfo.error || "Gemini API key required",
+          mode: keyInfo.mode,
+        },
+        { status: 401 }
+      );
+    }
+    const gemini = createGoogleGenerativeAI({
+      apiKey: geminiKey,
+    });
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(
-        JSON.stringify({ error: "Messages array is required" }), 
-        { 
+        JSON.stringify({ error: "Messages array is required" }),
+        {
           status: 400,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { "Content-Type": "application/json" },
         }
       );
     }
 
     // Get the latest user message
     const userMessage = messages[messages.length - 1];
-    
+
     // Build conversation context (all messages for full context)
-    const conversationHistory = messages.map((msg) => {
-      const role = msg.role === 'user' ? 'Human' : 'DSA Assistant';
-      return `${role}: ${msg.content}`;
-    }).join('\n\n');
+    const conversationHistory = messages
+      .map((msg) => {
+        const role = msg.role === "user" ? "Human" : "DSA Assistant";
+        return `${role}: ${msg.content}`;
+      })
+      .join("\n\n");
 
     // Add current tab context if available
     let codeContext = "";
@@ -139,47 +156,52 @@ ${currentTab.code}
 
     // Enhanced context analysis
     const messageContent = userMessage.content.toLowerCase();
-    
-    const isCodeAnalysisRequest = messageContent.includes('analyze') || 
-                                 messageContent.includes('review') ||
-                                 messageContent.includes('check');
-    
-    const isOptimizationRequest = messageContent.includes('optimize') ||
-                                 messageContent.includes('improve') ||
-                                 messageContent.includes('performance') ||
-                                 messageContent.includes('faster') ||
-                                 messageContent.includes('better');
-    
-    const isDebuggingRequest = messageContent.includes('debug') ||
-                              messageContent.includes('error') ||
-                              messageContent.includes('fix') ||
-                              messageContent.includes('bug') ||
-                              messageContent.includes('wrong') ||
-                              messageContent.includes('issue');
 
-    const isComplexityRequest = messageContent.includes('complexity') ||
-                               messageContent.includes('big o') ||
-                               messageContent.includes('time') ||
-                               messageContent.includes('space');
+    const isCodeAnalysisRequest =
+      messageContent.includes("analyze") ||
+      messageContent.includes("review") ||
+      messageContent.includes("check");
 
-    const isExplanationRequest = messageContent.includes('explain') ||
-                                messageContent.includes('how') ||
-                                messageContent.includes('understand') ||
-                                messageContent.includes('step by step');
+    const isOptimizationRequest =
+      messageContent.includes("optimize") ||
+      messageContent.includes("improve") ||
+      messageContent.includes("performance") ||
+      messageContent.includes("faster") ||
+      messageContent.includes("better");
+
+    const isDebuggingRequest =
+      messageContent.includes("debug") ||
+      messageContent.includes("error") ||
+      messageContent.includes("fix") ||
+      messageContent.includes("bug") ||
+      messageContent.includes("wrong") ||
+      messageContent.includes("issue");
+
+    const isComplexityRequest =
+      messageContent.includes("complexity") ||
+      messageContent.includes("big o") ||
+      messageContent.includes("time") ||
+      messageContent.includes("space");
+
+    const isExplanationRequest =
+      messageContent.includes("explain") ||
+      messageContent.includes("how") ||
+      messageContent.includes("understand") ||
+      messageContent.includes("step by step");
 
     // Check if there's code context available
-    const hasCodeContext = currentTab && currentTab.code && currentTab.code.trim();
+    const hasCodeContext =
+      currentTab && currentTab.code && currentTab.code.trim();
 
     // Check if any message in the conversation contains code (for fallback/general context)
     const hasCodeInConversation = messages.some(
       (msg) =>
-        typeof msg.content === "string" &&
-        /```[\s\S]*?```/.test(msg.content)
+        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content)
     );
 
     // Create specialized context based on request type
     let contextualPrompt = "";
-    
+
     if (isCodeAnalysisRequest && hasCodeContext) {
       contextualPrompt = `
 🔍 **CODE ANALYSIS REQUEST**
@@ -293,17 +315,25 @@ ${hasCodeContext ? "- Reference the current code context when answering" : ""}
 
 Please provide a detailed, helpful response that demonstrates expertise while being accessible and encouraging.`;
 
-    console.log("DSA Chatbot Request:", { 
+    console.log("DSA Chatbot Request:", {
       messageCount: messages.length,
-      requestType: isCodeAnalysisRequest ? 'Code Analysis' : 
-                  isOptimizationRequest ? 'Optimization' : 
-                  isDebuggingRequest ? 'Debugging' : 
-                  isComplexityRequest ? 'Complexity Analysis' :
-                  isExplanationRequest ? 'Explanation' : 'General',
+      requestType: isCodeAnalysisRequest
+        ? "Code Analysis"
+        : isOptimizationRequest
+          ? "Optimization"
+          : isDebuggingRequest
+            ? "Debugging"
+            : isComplexityRequest
+              ? "Complexity Analysis"
+              : isExplanationRequest
+                ? "Explanation"
+                : "General",
       hasCodeContext: hasCodeContext,
       hasCodeInConversation: hasCodeInConversation,
-      currentFile: currentTab ? `${currentTab.name} (${currentTab.language})` : 'None',
-      userQuery: userMessage.content.substring(0, 100) + "..."
+      currentFile: currentTab
+        ? `${currentTab.name} (${currentTab.language})`
+        : "None",
+      userQuery: userMessage.content.substring(0, 100) + "...",
     });
 
     const result = streamText({
@@ -314,19 +344,22 @@ Please provide a detailed, helpful response that demonstrates expertise while be
     return result.toDataStreamResponse();
   } catch (error: any) {
     console.error("DSA Chatbot API Error:", error);
-    
+
     const errorMessage = error.message || "Failed to process your question";
-    const errorDetails = error.code ? `Error Code: ${error.code}` : "Please try again";
-    
+    const errorDetails = error.code
+      ? `Error Code: ${error.code}`
+      : "Please try again";
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: errorMessage,
         details: errorDetails,
-        suggestion: "Try asking a more specific question about your algorithm or code"
-      }), 
-      { 
+        suggestion:
+          "Try asking a more specific question about your algorithm or code",
+      }),
+      {
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { "Content-Type": "application/json" },
       }
     );
   }
