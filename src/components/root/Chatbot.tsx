@@ -1,6 +1,6 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -12,24 +12,13 @@ import {
     RotateCcw,
     Brain,
     Loader2,
-    Code2,
-    Zap,
-    Target,
-    Lightbulb,
     ChevronDown,
     FileCode,
     Check,
     Search,
     BookOpen,
-    Timer,
-    Bug,
-    TrendingUp,
-    FileText,
-    Cpu,
-    Database,
-    GitBranch,
-    Layers,
-    Sparkles
+    Target,
+    Lightbulb
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
@@ -63,7 +52,7 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
     const [activeTab, setActiveTab] = useState("analyze");
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
     const scrollViewportRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const { tabs, activeTabId } = useEditorStore();
     const currentTab = tabs.find(tab => tab.id === activeTabId);
@@ -87,13 +76,12 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                 language: currentTab.language,
                 code: currentTab.code,
                 geminiApiKey: geminiApiKey?.value
-
             } : null
         },
         initialMessages: []
     });
 
-    // Tab-based suggestions similar to t3.chat
+    // Simplified suggestion tabs
     const suggestionTabs: Tab[] = [
         {
             id: "analyze",
@@ -128,19 +116,19 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
             icon: BookOpen,
             suggestions: [
                 {
-                    text: "Explain how binary search works with examples",
-                    prompt: "Explain how binary search works step by step with code examples and complexity analysis."
+                    text: "Explain binary search with examples",
+                    prompt: "Explain binary search algorithm step by step with code examples and complexity analysis."
                 },
                 {
-                    text: "What are the differences between arrays and linked lists?",
+                    text: "Arrays vs Linked Lists comparison",
                     prompt: "Explain the differences between arrays and linked lists, including their use cases and trade-offs."
                 },
                 {
-                    text: "Help me understand dynamic programming concepts",
-                    prompt: "Explain dynamic programming concepts with simple examples and when to use this approach."
+                    text: "Dynamic Programming fundamentals",
+                    prompt: "Teach me dynamic programming concepts with simple examples and when to use this approach."
                 },
                 {
-                    text: "Teach me about graph traversal algorithms",
+                    text: "Graph traversal algorithms",
                     prompt: "Explain BFS and DFS graph traversal algorithms with implementations and use cases."
                 }
             ]
@@ -151,19 +139,19 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
             icon: Lightbulb,
             suggestions: [
                 {
-                    text: "Help me break down this complex coding problem",
+                    text: "Break down complex coding problems",
                     prompt: "Help me break down this complex problem into smaller, manageable parts with a step-by-step approach."
                 },
                 {
-                    text: "What algorithm should I use for this problem?",
+                    text: "Choose the right algorithm for my problem",
                     prompt: "I need help choosing the right algorithm and data structure for my problem. Can you suggest the best approach?"
                 },
                 {
-                    text: "Guide me through solving a two-pointer problem",
+                    text: "Guide me through two-pointer problems",
                     prompt: "Explain the two-pointer technique and guide me through solving a problem using this approach."
                 },
                 {
-                    text: "Help me with a sliding window algorithm problem",
+                    text: "Help with sliding window algorithms",
                     prompt: "Explain the sliding window technique and help me implement a solution using this pattern."
                 }
             ]
@@ -174,33 +162,64 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
             icon: Target,
             suggestions: [
                 {
-                    text: "Give me a medium-level array problem to solve",
+                    text: "Give me a medium-level array problem",
                     prompt: "Give me a medium-difficulty array problem to practice with hints and solution approach."
                 },
                 {
-                    text: "Suggest coding interview questions for my skill level",
+                    text: "Interview questions for my skill level",
                     prompt: "Suggest some coding interview questions appropriate for my skill level with detailed explanations."
                 },
                 {
-                    text: "Help me prepare for technical interviews",
+                    text: "Technical interview preparation guide",
                     prompt: "What are the most important algorithms and data structures I should know for coding interviews?"
                 },
                 {
-                    text: "Create a study plan for competitive programming",
+                    text: "Competitive programming study plan",
                     prompt: "Help me create a structured study plan for improving my competitive programming skills."
                 }
             ]
         }
     ];
 
-    // Auto-scroll to bottom when streaming starts
+    // Handle textarea auto-resize
+    const autoResizeTextarea = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+
+        textarea.style.height = 'auto';
+        const newHeight = Math.min(Math.max(textarea.scrollHeight, 56), 200);
+        textarea.style.height = `${newHeight}px`;
+    }, []);
+
+    // Handle keyboard events properly
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter') {
+            if (e.shiftKey) {
+                // Allow new line with Shift+Enter
+                return;
+            } else {
+                // Send message with Enter
+                e.preventDefault();
+                if (input.trim() && !isLoading) {
+                    handleFormSubmit(e as any);
+                }
+            }
+        }
+    };
+
+    // Handle input changes
+    const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        handleInputChange(e as any);
+        setTimeout(autoResizeTextarea, 0);
+    };
+
+    // Auto-scroll management
     useEffect(() => {
         if (isLoading && messages.length > 0) {
             scrollToBottom();
         }
     }, [isLoading]);
 
-    // Handle suggestion click
     const handleSuggestionClick = async (suggestion: Suggestion) => {
         try {
             let finalPrompt = suggestion.prompt;
@@ -222,7 +241,6 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
         }
     };
 
-    // Scroll management
     const checkScrollPosition = useCallback(() => {
         if (!scrollViewportRef.current) return;
 
@@ -247,7 +265,6 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
         });
     }, []);
 
-    // Effects
     useEffect(() => {
         setTimeout(checkScrollPosition, 100);
     }, [messages, checkScrollPosition]);
@@ -262,11 +279,12 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
         if (isOpen) {
             setShowSuggestions(messages.length === 0);
             setTimeout(() => {
-                inputRef.current?.focus();
+                textareaRef.current?.focus();
                 checkScrollPosition();
+                autoResizeTextarea();
             }, 100);
         }
-    }, [isOpen, messages.length, checkScrollPosition]);
+    }, [isOpen, messages.length, checkScrollPosition, autoResizeTextarea]);
 
     const copyToClipboard = async (text: string, messageId: string) => {
         try {
@@ -283,10 +301,14 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
         setMessages([]);
         setShowSuggestions(true);
         setShowScrollButton(false);
+        setInput('');
+        if (textareaRef.current) {
+            textareaRef.current.style.height = '56px';
+        }
         toast.success("Chat cleared");
     };
 
-    const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() || isLoading) return;
 
@@ -294,6 +316,11 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
             const finalMessage = input.trim();
             setShowSuggestions(false);
             setInput('');
+
+            // Reset textarea height
+            if (textareaRef.current) {
+                textareaRef.current.style.height = '56px';
+            }
 
             await append({
                 id: `user-${Date.now()}`,
@@ -311,48 +338,40 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="min-w-[min(95dvw,900px)] max-w-[900px] h-[90vh] p-0 flex flex-col overflow-hidden  shadow-2xl">
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 shrink-0">
+            <DialogContent className="min-w-[min(95dvw,900px)] max-w-[900px] h-[90vh] p-0 flex flex-col overflow-hidden shadow-2xl">
+                {/* Simplified Header */}
+                <div className="flex items-center justify-between p-4 border-b">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center shrink-0">
-                            <Brain size={18} className="text-background" />
+                        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                            <Brain size={18} className="text-primary-foreground" />
                         </div>
-                        <div className="min-w-0 ">
+                        <div className="min-w-0">
                             <h2 className="font-semibold text-lg">DSA Expert Assistant</h2>
                             {currentTab && (
                                 <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                                    <FileCode size={12} className="shrink-0" />
+                                    <FileCode size={12} />
                                     <span className="truncate max-w-32">{currentTab.name}</span>
                                     <Badge variant="secondary" className="text-xs px-1.5 py-0.5 font-mono">
                                         {currentTab.language}
                                     </Badge>
-
                                 </div>
                             )}
-
                         </div>
-                        <div className="h-full flex ">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={clearChat}
-                                className="h-8 w-8 p-0 shrink-0 "
-                                title="Clear chat"
-                            >
-                                <RotateCcw size={16} />
-                            </Button>
-                        </div>
-
-
-
-
                     </div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearChat}
+                        className="h-8 w-8 p-0"
+                        title="Clear chat"
+                    >
+                        <RotateCcw size={16} />
+                    </Button>
                 </div>
 
                 {/* Error Banner */}
                 {error && (
-                    <div className="px-4 py-3 bg-destructive/10 text-sm border-b flex items-center justify-between shrink-0">
+                    <div className="px-4 py-3 bg-destructive/10 text-sm border-b flex items-center justify-between">
                         <span>Failed to send message. Please try again.</span>
                         <Button variant="link" size="sm" onClick={() => reload()} className="h-auto p-0 text-sm">
                             Retry
@@ -365,25 +384,20 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                     <div
                         ref={scrollViewportRef}
                         onScroll={handleScroll}
-                        // style={{
-                        //     scrollbarWidth: 'thin',
-                        //     scrollbarColor: 'rgb(156 163 175) transparent',
-                        //     scrollBehavior: 'smooth'
-                        // }}
                         className="h-full overflow-y-auto"
                     >
-                        {/* Welcome State */}
+                        {/* Simplified Welcome State */}
                         {messages.length === 0 && showSuggestions && (
                             <div className="flex flex-col h-full">
                                 {/* Welcome Message */}
-                                <div className="text-center py-6 px-4">
-                                    <h3 className="text-2xl font-semibold mb-2">How can I help you today?</h3>
+                                <div className="text-center py-8 px-4">
+                                    <h3 className="text-2xl font-semibold mb-3">How can I help you today?</h3>
                                     <p className="text-muted-foreground">
-                                        Choose a category below or ask me anything about DSA
+                                        Choose a category below or ask me anything about algorithms, data structures, and competitive programming
                                     </p>
                                 </div>
 
-                                {/* Tabs */}
+                                {/* Simple Tabs */}
                                 <div className="px-4 mb-6">
                                     <div className="flex gap-2 p-1 bg-muted rounded-lg max-w-md mx-auto">
                                         {suggestionTabs.map((tab) => {
@@ -404,7 +418,7 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                                     </div>
                                 </div>
 
-                                {/* Suggestions List */}
+                                {/* Simple Suggestions List */}
                                 <div className="flex-1 px-4 pb-4">
                                     <div className="max-w-2xl mx-auto space-y-3">
                                         {currentTabSuggestions.map((suggestion, index) => (
@@ -428,8 +442,8 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                                     <div key={message.id} className="group">
                                         {message.role === 'assistant' ? (
                                             <div className="flex gap-3">
-                                                <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center shrink-0 mt-1">
-                                                    <Bot size={16} className="text-background" />
+                                                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0 mt-1">
+                                                    <Bot size={16} className="text-primary-foreground" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <MemoizedMarkdown
@@ -458,7 +472,7 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                                             </div>
                                         ) : (
                                             <div className="flex gap-3 justify-end">
-                                                <div className="bg-muted rounded-lg px-4 py-3 max-w-[80%]">
+                                                <div className="bg-primary text-primary-foreground rounded-lg px-4 py-3 max-w-[80%]">
                                                     <div className="text-sm whitespace-pre-wrap">
                                                         {message.content}
                                                     </div>
@@ -474,8 +488,8 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                                 {/* Loading indicator */}
                                 {isLoading && (
                                     <div className="flex gap-3">
-                                        <div className="w-8 h-8 bg-foreground rounded-lg flex items-center justify-center shrink-0 mt-1">
-                                            <Bot size={16} className="text-background" />
+                                        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0 mt-1">
+                                            <Bot size={16} className="text-primary-foreground" />
                                         </div>
                                         <div className="bg-muted rounded-lg px-4 py-3 flex items-center gap-2">
                                             <div className="flex gap-1">
@@ -506,31 +520,46 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
                     )}
                 </div>
 
-                {/* Input Area - Fixed at bottom */}
-                <div className="p-4 border-t shrink-0 bg-background">
-                    <form onSubmit={handleFormSubmit} className="flex gap-3 max-w-4xl mx-auto">
-                        <div className="flex-1 relative">
-                            <Input
-                                ref={inputRef}
+                {/* Enhanced Input Area - Like Claude */}
+                <div className="p-4 border-t">
+                    <form onSubmit={handleFormSubmit} className="max-w-4xl mx-auto">
+                        <div className="relative">
+                            <Textarea
+                                ref={textareaRef}
                                 value={input}
-                                onChange={handleInputChange}
-                                placeholder="Ask me anything about algorithms and data structures..."
+                                onChange={handleTextareaChange}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Ask me about algorithms, data structures, or paste your code for analysis..."
                                 disabled={isLoading}
-                                className="h-12 text-sm px-4 bg-background border-2 focus:border-foreground/20 rounded-lg"
+                                className="min-h-[56px] max-h-[200px] py-4 px-4 pr-12 resize-none border-2 focus:border-primary/50 rounded-xl text-sm leading-relaxed"
+                                style={{ height: '56px' }}
                             />
+                            <Button
+                                type="submit"
+                                disabled={!input.trim() || isLoading}
+                                size="sm"
+                                className="absolute bottom-2 right-2 h-8 w-8 p-0 rounded-lg"
+                            >
+                                {isLoading ? (
+                                    <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                    <Send size={16} />
+                                )}
+                            </Button>
                         </div>
-                        <Button
-                            type="submit"
-                            disabled={!input.trim() || isLoading}
-                            size="lg"
-                            className="h-12 px-6 rounded-lg shrink-0"
-                        >
-                            {isLoading ? (
-                                <Loader2 size={18} className="animate-spin" />
-                            ) : (
-                                <Send size={18} />
+
+                        {/* Input helpers */}
+                        <div className="flex items-center justify-between mt-2">
+                            <div className="text-xs text-muted-foreground">
+                                Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs font-mono">Enter</kbd> to send,
+                                <kbd className="px-1 py-0.5 bg-muted rounded text-xs font-mono ml-1">Shift+Enter</kbd> for new line
+                            </div>
+                            {currentTab && (
+                                <Badge variant="outline" className="text-xs">
+                                    Code context: {currentTab.name}
+                                </Badge>
                             )}
-                        </Button>
+                        </div>
                     </form>
                 </div>
             </DialogContent>
@@ -538,7 +567,7 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
     );
 }
 
-// Trigger button
+// Simple Trigger button
 export function DSAChatbotTrigger() {
     const [isOpen, setIsOpen] = useState(false);
 

@@ -254,6 +254,8 @@ export default function Home() {
   const [panelWidth, setPanelWidth] = useState(600);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isControlsDragging, setIsControlsDragging] = useState(false);
+  // ## NEW: Track if this is the initial render
+  const [hasInitiallyRendered, setHasInitiallyRendered] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsX = useMotionValue(0);
@@ -261,6 +263,15 @@ export default function Home() {
   const dragControls = useDragControls();
 
   const quickEase = [0.4, 0, 0.2, 1] as const;
+
+  // ## NEW: Set the initial render flag after the first render
+  useEffect(() => {
+    // Small delay to ensure the component has fully mounted
+    const timer = setTimeout(() => {
+      setHasInitiallyRendered(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -323,14 +334,17 @@ export default function Home() {
     normal: { borderRadius: "0.875rem", transition: { duration: 0.6, ease: smoothEase } },
     code: { borderRadius: "0rem", transition: { duration: 0.6, ease: smoothEase } }
   };
+
+  // ## UPDATED: Dynamic panel variants based on initial render state
   const panelVariants = {
     visible: {
       x: 0,
       opacity: 1,
       scale: 1,
       filter: "blur(0px)",
-      visibility: "visible", // Make sure it's visible
-      transition: {
+      visibility: "visible",
+      transition: hasInitiallyRendered ? {
+        // Full animation for non-initial renders (toggles, mode switches)
         duration: 0.5,
         ease: smoothEase,
         staggerChildren: 0.03,
@@ -339,6 +353,13 @@ export default function Home() {
         x: { duration: 0.5, ease: smoothEase },
         scale: { duration: 0.5, ease: smoothEase },
         filter: { duration: 0.5, ease: smoothEase }
+      } : {
+        // Instant transition for initial render
+        duration: 0,
+        opacity: { duration: 0 },
+        x: { duration: 0 },
+        scale: { duration: 0 },
+        filter: { duration: 0 }
       }
     },
     hidden: {
@@ -346,7 +367,7 @@ export default function Home() {
       opacity: 0,
       scale: 0.96,
       filter: "blur(4px)",
-      visibility: "hidden", // Hide the panel when not visible
+      visibility: "hidden",
       transition: {
         duration: 0.4,
         ease: smoothEase,
@@ -358,6 +379,7 @@ export default function Home() {
       }
     }
   };
+
   useSessionSync();
   const { hasApiKeys } = useCredentialsStore();
   return (
@@ -405,18 +427,17 @@ export default function Home() {
               <CodeEditor />
             </motion.div>
 
-            {/* ## CHANGE: Logic to preserve SidePanel state ## */}
-            {/* The SidePanel is now always rendered in 'normal' mode, but its visibility is controlled by the 'animate' prop. */}
-            {/* This prevents it from unmounting and losing its state when hidden. */}
+            {/* ## UPDATED: SidePanel with conditional initial animation ## */}
             <AnimatePresence>
               {viewMode === 'normal' && (
                 <motion.div
                   className="absolute right-0 top-0 h-full bg-background overflow-hidden z-20"
                   style={{ width: panelWidth }}
                   variants={panelVariants}
-                  initial="hidden"
-                  animate={isPanelVisible ? "visible" : "hidden"} // Controls visibility without unmounting
-                  exit="hidden" // Exit animation when switching to 'code' mode
+                  // ## UPDATED: Use different initial state based on render status
+                  initial={hasInitiallyRendered ? "hidden" : "visible"}
+                  animate={isPanelVisible ? "visible" : "hidden"}
+                  exit="hidden"
                 >
                   <SmoothResizeHandle
                     isPanelVisible={isPanelVisible}
@@ -425,9 +446,7 @@ export default function Home() {
                     panelWidth={panelWidth}
                     containerRef={containerRef as React.RefObject<HTMLDivElement>}
                   />
-                  {/* The inner motion.div is no longer needed as the parent handles the animation */}
                   <div className="h-full w-full py-5">
-                    {/* <SidePanel /> */}
                     <SidePanel isVisible={isPanelVisible} showPanel={showPanel} />
                   </div>
                 </motion.div>

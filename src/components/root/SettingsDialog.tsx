@@ -238,7 +238,8 @@ export default function SettingsDialog() {
             {/* Settings Dialog */}
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-2">
+
+                    <Button variant="outline" size="icon" className="gap-2">
                         <Settings className="w-4 h-4" />
                     </Button>
                 </DialogTrigger>

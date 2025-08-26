@@ -1,21 +1,10 @@
 "use client";
-import { Code2, Target, Loader2 } from "lucide-react";
+import { Code2, } from "lucide-react";
 import SettingsDialog from "./SettingsDialog";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { ThemeSwitcher } from "../features/themes/theme-switcher";
 const Header = () => {
-  const router = useRouter();
-  const [isNavigating, setIsNavigating] = useState(false);
 
-  const handleNavigateToPractice = async () => {
-    setIsNavigating(true);
 
-    // Simulate loading time for better UX
-    setTimeout(() => {
-      router.push('/practice');
-    }, 2500);
-  };
 
   return (
     <>
@@ -34,33 +23,9 @@ const Header = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Enhanced Practice Mode Button */}
-            {/* <Button
-              onClick={handleNavigateToPractice}
-              disabled={isNavigating}
-              className={`
-                relative overflow-hidden font-medium shadow-sm hover:shadow-md 
-                transition-all duration-200 disabled:opacity-75
-                ${isNavigating ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'hover:scale-105'}
-              `}
-              size="sm"
-            >
-              {isNavigating ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Loading...
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/10 to-transparent animate-pulse" />
-                </>
-              ) : (
-                <>
-                  <Target className="w-4 h-4 mr-2" />
-                  Practice Mode
-                </>
-              )}
-            </Button> */}
+
             <ThemeSwitcher />
 
-            {/* Settings Dialog */}
             <SettingsDialog />
           </div>
         </div>
