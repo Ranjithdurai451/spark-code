@@ -385,7 +385,8 @@ export default function Home() {
   return (
     <Providers>
       <div className="lg:hidden"><MobileNotSupported /></div>
-      <BYOKDialog open={!hasApiKeys()} onOpenChange={() => { }} />
+      <div className="hidden lg:block">   <BYOKDialog open={!hasApiKeys()} onOpenChange={() => { }} /></div>
+
       <motion.div ref={containerRef} className="hidden lg:flex flex-col h-screen relative overflow-hidden" variants={containerVariants} animate={viewMode} initial={false}>
         <AnimatePresence mode="wait">
           {viewMode === 'normal' && (

@@ -18,6 +18,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SparkCode",
   description: "SparkCode is an innovative AI-powered coding platform that helps developers practice coding, analyze code quality, generate comprehensive test cases, and execute solutions with real-time feedback. Enhance your programming skills and ace technical interviews with intelligent AI assistance and multi-language support.",
+  icons: {
+    icon: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
