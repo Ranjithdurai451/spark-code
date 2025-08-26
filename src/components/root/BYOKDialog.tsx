@@ -236,14 +236,14 @@ export default function BYOKDialog({ open, onOpenChange }: BYOKDialogProps) {
 
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={onOpenChange} >
             <DialogContent
-                className="sm:max-w-[900px] max-h-[95vh] overflow-y-auto"
+                className=" sm:max-w-[900px] max-h-[95vh] overflow-y-auto"
                 onPointerDownOutside={(e) => e.preventDefault()}
                 onEscapeKeyDown={(e) => e.preventDefault()}
                 showCloseButton={false}
             >
-                <DialogHeader className="pb-6">
+                <DialogHeader className="pb-6 ">
                     <div className="flex flex-col items-center gap-4">
                         <div className="relative">
                             <div className="w-14 h-14 flex items-center justify-center rounded-xl bg-primary/10 mb-1">

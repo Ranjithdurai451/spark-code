@@ -16,6 +16,7 @@ import { motion, AnimatePresence, useMotionValue, useDragControls, MotionValue, 
 import { useCredentialsStore } from "@/components/root/credentialsStore";
 import BYOKDialog from "@/components/root/BYOKDialog";
 import { useSessionSync } from "@/components/root/useSessionSync";
+import { useMediaQuery } from "@/components/root/useMedia";
 
 type ViewMode = 'normal' | 'code';
 
@@ -382,10 +383,13 @@ export default function Home() {
 
   useSessionSync();
   const { hasApiKeys } = useCredentialsStore();
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
   return (
     <Providers>
       <div className="lg:hidden"><MobileNotSupported /></div>
-      <div className="hidden lg:block">   <BYOKDialog open={!hasApiKeys()} onOpenChange={() => { }} /></div>
+      <BYOKDialog open={isDesktop && !hasApiKeys()} onOpenChange={() => { }} />
+
 
       <motion.div ref={containerRef} className="hidden lg:flex flex-col h-screen relative overflow-hidden" variants={containerVariants} animate={viewMode} initial={false}>
         <AnimatePresence mode="wait">
@@ -469,3 +473,5 @@ export default function Home() {
     </Providers>
   );
 }
+
+
