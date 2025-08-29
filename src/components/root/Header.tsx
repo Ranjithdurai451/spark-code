@@ -1,7 +1,8 @@
 "use client";
-import { Code2, } from "lucide-react";
+import { Code2 } from "lucide-react";
 import SettingsDialog from "./SettingsDialog";
 import { ThemeSwitcher } from "../features/themes/theme-switcher";
+import GitHubStarButton from "@/components/common/GitHubStarButton";
 const Header = () => {
 
 
@@ -23,6 +24,7 @@ const Header = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <GitHubStarButton />
 
             <ThemeSwitcher />
 
