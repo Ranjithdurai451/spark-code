@@ -101,9 +101,9 @@ export const Codeblock = memo(
             const mappedLanguage = languageMap[language.toLowerCase()] || 'javascript';
             const config = getLanguageConfig(mappedLanguage);
 
-            // Create new tab with the code
+            // Create new tab with a valid default filename for the language
             const newTab = {
-                name: `${config.displayName} Code`,
+                name: config.filename,
                 language: mappedLanguage,
                 code: codeString,
                 isDirty: true,

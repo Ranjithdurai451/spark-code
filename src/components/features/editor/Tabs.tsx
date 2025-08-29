@@ -84,6 +84,75 @@ const suggested = (l: Language) => cfg(l).filename;
 
 /* ─────────────────────────────────────────────────────────── */
 
+function validateFileName(name: string, language: Language): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return "Filename cannot be empty";
+
+  // Disallow path separators
+  if (/[\\/]/.test(trimmed)) return "Filename cannot contain slashes";
+
+  // Disallow whitespace anywhere
+  if (/\s/.test(trimmed)) return "Filename cannot contain spaces";
+
+  // Disallow illegal characters (Windows + common VCS-problematic)
+  if (/[<>:\"|?*#%{}~+`]/.test(trimmed)) return "Filename contains illegal characters";
+
+  // Disallow control characters
+  if (/[\x00-\x1F\x7F]/.test(trimmed)) return "Filename contains control characters";
+
+  // Disallow leading dot and trailing dot/space
+  if (/^\./.test(trimmed)) return "Filename cannot start with a dot";
+  if (/[ .]$/.test(trimmed)) return "Filename cannot end with a dot or space";
+
+  // Reserved DOS device names
+  const base = trimmed.replace(/\.[^.]+$/, "");
+  const reserved = new Set([
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+  ]);
+  if (reserved.has(base.toUpperCase())) return "Filename is a reserved name";
+
+  const config = languages.find((l) => l.name === language);
+  if (!config) return "Invalid language selected";
+  const expectedExtension = config.extension;
+
+  // Case-insensitive extension check, but preserve exact extension requirement
+  const lower = trimmed.toLowerCase();
+  if (!lower.endsWith(`.${expectedExtension.toLowerCase()}`)) {
+    return `Filename must end with .${expectedExtension}`;
+  }
+
+  // Extract base name (without extension)
+  const lastIndex = trimmed.toLowerCase().lastIndexOf(`.${expectedExtension.toLowerCase()}`);
+  const baseName = trimmed.slice(0, lastIndex);
+  if (!baseName) return "Filename must have a name before the extension";
+
+  // Prevent consecutive dots in the base name
+  if (/\.\./.test(baseName)) return "Filename cannot contain consecutive dots";
+
+  // Language-specific rules
+  if (language === "java") {
+    if (!/^[A-Z][A-Za-z0-9_$]*$/.test(baseName)) {
+      return "Java class name must be PascalCase and start with a capital letter";
+    }
+  }
+
+  if (language === "typescript") {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(baseName)) {
+      return "TypeScript filename must be a valid identifier";
+    }
+  }
+
+  if (language === "python") {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(baseName)) {
+      return "Python filename must be a valid module identifier";
+    }
+  }
+
+  return null;
+}
+
 interface Props {
   onFormatCode: () => void;
   isFormatting: boolean;
@@ -111,7 +180,7 @@ function ErrorCard({
   isRetrying?: boolean;
 }) {
   return (
-    <Card className="border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
+    <Card className="py-2 border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800">
       <CardContent className="p-3">
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
@@ -341,11 +410,14 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
 
   /* -------------- file-list handlers ---------------------- */
   const createFile = () => {
-    const e = fileErr(newName.trim(), newLang);
-    if (e) return setErr(e);
+    const trimmed = newName.trim();
+    const genericErr = fileErr(trimmed, newLang);
+    if (genericErr) return setErr(genericErr);
+    const specificErr = validateFileName(trimmed, newLang);
+    if (specificErr) return setErr(specificErr);
 
     addTab({
-      name: newName.trim(),
+      name: trimmed,
       language: newLang,
       code: cfg(newLang).defaultCode
     });
@@ -358,10 +430,13 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
   const rename = () => {
     const t = tabs.find(t => t.id === target);
     if (!t) return;
-    const e = fileErr(newName.trim(), t.language);
-    if (e) return setErr(e);
+    const trimmed = newName.trim();
+    const genericErr = fileErr(trimmed, t.language);
+    if (genericErr) return setErr(genericErr);
+    const specificErr = validateFileName(trimmed, t.language);
+    if (specificErr) return setErr(specificErr);
 
-    updateTab(target, { name: newName.trim() });
+    updateTab(target, { name: trimmed });
     setShowRename(false);
     setNewName("");
     setErr(null);
@@ -401,6 +476,12 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     const fileName = (saveName || activeTab.name).trim();
     if (!fileName) {
       toast.error("Filename required");
+      return;
+    }
+
+    const nameValidation = validateFileName(fileName, activeTab.language);
+    if (nameValidation) {
+      toast.error(nameValidation);
       return;
     }
 
