@@ -1,12 +1,9 @@
 "use client";
 import { Code2 } from "lucide-react";
-import SettingsDialog from "./SettingsDialog";
+import ProfileDropdown from "./ProfileDropdown";
 import { ThemeSwitcher } from "../features/themes/theme-switcher";
 import GitHubStarButton from "@/components/common/GitHubStarButton";
 const Header = () => {
-
-
-
   return (
     <>
       <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 relative z-50">
@@ -28,11 +25,10 @@ const Header = () => {
 
             <ThemeSwitcher />
 
-            <SettingsDialog />
+            <ProfileDropdown />
           </div>
         </div>
       </header>
-
     </>
   );
 };

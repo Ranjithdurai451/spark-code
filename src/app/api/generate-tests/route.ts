@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGeminiClient } from "@/lib/model";
+import { requireCredits } from "@/lib/credits";
 import { streamText } from "ai";
-import { getApiKeys } from "@/lib/getApiKeys";
+// BYOK removed: gemini client is created from env
 
 const LEETCODE_TEST_CASE_PROMPT = `
 🚨 **MAIN RULES - READ CAREFULLY:**
@@ -239,30 +240,12 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const {
-      messages,
-      code,
-      language,
-      geminiApiKey: clientGeminiApiKey,
-    } = await req.json();
-    const keyInfo = await getApiKeys(req);
-    const geminiKey =
-      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
-
-    // Check if key available
-    if (!geminiKey) {
-      return Response.json(
-        {
-          error: "NO_API_KEY",
-          message: keyInfo.error || "Gemini API key required",
-          mode: keyInfo.mode,
-        },
-        { status: 401 }
-      );
+    const credit = await requireCredits(req, 1, "generate_tests");
+    if (!credit.allowed) {
+      return Response.json(credit.body, { status: credit.status });
     }
-    const gemini = createGoogleGenerativeAI({
-      apiKey: geminiKey,
-    });
+    const { messages, code, language } = await req.json();
+    const gemini = createGeminiClient();
 
     let codeToAnalyze = code;
     let detectedLanguage = language || "java";
@@ -280,7 +263,7 @@ export async function POST(req: NextRequest) {
       // Enhanced code extraction with proper handling
       for (const pattern of extractionPatterns) {
         const matches = Array.from(
-          userMessage.content.matchAll(pattern)
+          userMessage.content.matchAll(pattern),
         ) as RegExpMatchArray[];
         for (const match of matches) {
           if (match[1] && match[1].length >= 10) {
@@ -313,7 +296,7 @@ export async function POST(req: NextRequest) {
           ],
           retryable: true,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -325,7 +308,7 @@ export async function POST(req: NextRequest) {
           details: `Code length: ${codeToAnalyze.length} characters (minimum 15 required)`,
           retryable: true,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -353,14 +336,14 @@ export async function POST(req: NextRequest) {
           detectedLanguage,
           retryable: true,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Enhanced function signature validation
     const functionSignature = extractFunctionSignature(
       codeToAnalyze,
-      detectedLanguage
+      detectedLanguage,
     );
 
     if (!functionSignature.isValid) {
@@ -372,7 +355,7 @@ export async function POST(req: NextRequest) {
           suggestions: getFunctionSuggestions(detectedLanguage),
           retryable: true,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -389,14 +372,14 @@ export async function POST(req: NextRequest) {
     // Build enhanced prompt with function context
     const prompt = LEETCODE_TEST_CASE_PROMPT.replace(
       /\{user_code\}/g,
-      codeToAnalyze
+      codeToAnalyze,
     )
       .replace(/\{language\}/g, detectedLanguage)
       .replace(/\{function_name\}/g, functionSignature.name)
       .replace(/\{function_params\}/g, functionSignature.parameters.join(", "))
       .replace(
         /\{return_type\}/g,
-        functionSignature.returnType || "auto-detect"
+        functionSignature.returnType || "auto-detect",
       );
 
     const result = streamText({
@@ -415,15 +398,15 @@ export async function POST(req: NextRequest) {
     response.headers.set("X-Function-Language", detectedLanguage);
     response.headers.set(
       "X-Function-Parameters",
-      functionSignature.parameters.length.toString()
+      functionSignature.parameters.length.toString(),
     );
     response.headers.set(
       "X-Algorithm-Pattern",
-      functionSignature.algorithmPattern || "unknown"
+      functionSignature.algorithmPattern || "unknown",
     );
     response.headers.set(
       "X-Processing-Time",
-      (Date.now() - startTime).toString()
+      (Date.now() - startTime).toString(),
     );
 
     return response;
@@ -449,7 +432,7 @@ export async function POST(req: NextRequest) {
       {
         status: 500,
         headers: { "Content-Type": "application/json; charset=utf-8" },
-      }
+      },
     );
   }
 }
@@ -457,7 +440,7 @@ export async function POST(req: NextRequest) {
 // Enhanced function signature extraction for all languages
 function extractFunctionSignature(
   code: string,
-  language: string
+  language: string,
 ): FunctionSignature {
   const result: FunctionSignature = {
     name: "",
@@ -504,7 +487,7 @@ function extractJavaFunction(code: string): FunctionSignature {
 
   // Find all class names for constructor exclusion
   const classNames = Array.from(code.matchAll(/class\s+(\w+)/g)).map(
-    (m) => m[1]
+    (m) => m[1],
   );
 
   // Find all function matches
@@ -569,14 +552,14 @@ function extractJavaFunction(code: string): FunctionSignature {
         functionName,
         parameters,
         returnType,
-        code
+        code,
       ),
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
     // Debug
     console.log(
-      `✅ Found Java function: ${functionName}(${parameters.join(", ")}) : ${returnType}`
+      `✅ Found Java function: ${functionName}(${parameters.join(", ")}) : ${returnType}`,
     );
 
     return signature;
@@ -642,7 +625,7 @@ function extractPythonFunction(code: string): FunctionSignature {
 
     const hasBody = nextLines.some(
       (line) =>
-        line.trim() && (line.startsWith("    ") || line.startsWith("\t"))
+        line.trim() && (line.startsWith("    ") || line.startsWith("\t")),
     );
 
     if (hasBody) {
@@ -656,13 +639,13 @@ function extractPythonFunction(code: string): FunctionSignature {
           functionName,
           parameters,
           returnType,
-          code
+          code,
         ),
         dataStructureTypes: detectDataStructureTypes(parameters, returnType),
       };
 
       console.log(
-        `✅ Found Python function: ${functionName} with pattern: ${signature.algorithmPattern}`
+        `✅ Found Python function: ${functionName} with pattern: ${signature.algorithmPattern}`,
       );
       return signature;
     }
@@ -723,13 +706,13 @@ function extractCppFunction(code: string): FunctionSignature {
         functionName,
         parameters,
         returnType,
-        code
+        code,
       ),
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
     console.log(
-      `✅ Found C++ function: ${functionName} with pattern: ${signature.algorithmPattern}`
+      `✅ Found C++ function: ${functionName} with pattern: ${signature.algorithmPattern}`,
     );
     return signature;
   }
@@ -780,13 +763,13 @@ function extractCFunction(code: string): FunctionSignature {
         functionName,
         parameters,
         returnType,
-        code
+        code,
       ),
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
     console.log(
-      `✅ Found C function: ${functionName} with pattern: ${signature.algorithmPattern}`
+      `✅ Found C function: ${functionName} with pattern: ${signature.algorithmPattern}`,
     );
     return signature;
   }
@@ -830,13 +813,13 @@ function extractGoFunction(code: string): FunctionSignature {
         functionName,
         parameters,
         returnType,
-        code
+        code,
       ),
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
     console.log(
-      `✅ Found Go function: ${functionName} with pattern: ${signature.algorithmPattern}`
+      `✅ Found Go function: ${functionName} with pattern: ${signature.algorithmPattern}`,
     );
     return signature;
   }
@@ -923,13 +906,13 @@ function extractJavaScriptFunction(code: string): FunctionSignature {
             functionName,
             parameters,
             "",
-            code
+            code,
           ),
           dataStructureTypes: detectDataStructureTypes(parameters, ""),
         };
 
         console.log(
-          `✅ Found JavaScript function: ${functionName} with pattern: ${signature.algorithmPattern}`
+          `✅ Found JavaScript function: ${functionName} with pattern: ${signature.algorithmPattern}`,
         );
         return signature;
       }
@@ -1026,13 +1009,13 @@ function extractTypeScriptFunction(code: string): FunctionSignature {
             functionName,
             parameters,
             returnType,
-            code
+            code,
           ),
           dataStructureTypes: detectDataStructureTypes(parameters, returnType),
         };
 
         console.log(
-          `✅ Found TypeScript function: ${functionName} with pattern: ${signature.algorithmPattern}`
+          `✅ Found TypeScript function: ${functionName} with pattern: ${signature.algorithmPattern}`,
         );
         return signature;
       }
@@ -1103,7 +1086,7 @@ function detectAlgorithmPattern(
   functionName: string,
   parameters: string[],
   returnType: string | undefined,
-  code: string
+  code: string,
 ): string {
   const name = functionName.toLowerCase();
   const paramStr = parameters.join(" ").toLowerCase();
@@ -1210,7 +1193,7 @@ function detectAlgorithmPattern(
 // Data structure type detection
 function detectDataStructureTypes(
   parameters: string[],
-  returnType: string | undefined
+  returnType: string | undefined,
 ): string[] {
   const types: string[] = [];
   const allParams = parameters.join(" ") + " " + (returnType || "");

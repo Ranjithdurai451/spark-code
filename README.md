@@ -60,6 +60,14 @@ Experience SparkCode live at [https://sparkcode.fun](https://sparkcode.fun).
     GITHUB_SECRET=YOUR_GITHUB_CLIENT_SECRET_HERE
     NEXTAUTH_URL=http://localhost:3000 # Important for local development
     ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY_HERE
+
+    # Supabase (for user credits system)
+    NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_URL_HERE
+    SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY_HERE
+
+    # Razorpay (for payments)
+    NEXT_PUBLIC_RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID_HERE
+    RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET_HERE
     ```
 
     - Register a GitHub OAuth App in your GitHub Developer Settings to get `GITHUB_ID` and `GITHUB_SECRET`.
@@ -68,6 +76,8 @@ Experience SparkCode live at [https://sparkcode.fun](https://sparkcode.fun).
     - Generate `ENCRYPTION_KEY` for API key encryption (e.g., a random 64-character string).
 
     **Note:** Gemini and Judge0 API keys are provided by users through the app's settings when they first use the analysis features.
+    - Set up a Supabase project and add the URL and service role key.
+    - Register with Razorpay to get your API keys for payment processing.
 
 4.  **Run the development server:**
     ```bash

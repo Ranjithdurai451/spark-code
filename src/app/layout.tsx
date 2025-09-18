@@ -4,6 +4,8 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/features/themes/theme-provider";
 import { ThemeScript } from "@/components/features/themes/theme-script";
 import SessionProvider from "@/components/root/SessionProvider";
+import Providers from "@/components/root/providers";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,7 +19,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "SparkCode",
-  description: "SparkCode is an innovative AI-powered coding platform that helps developers practice coding, analyze code quality, generate comprehensive test cases, and execute solutions with real-time feedback. Enhance your programming skills and ace technical interviews with intelligent AI assistance and multi-language support.",
+  description:
+    "SparkCode is an innovative AI-powered coding platform that helps developers practice coding, analyze code quality, generate comprehensive test cases, and execute solutions with real-time feedback. Enhance your programming skills and ace technical interviews with intelligent AI assistance and multi-language support.",
   icons: {
     icon: "/logo.svg",
   },
@@ -29,17 +32,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning >
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <SessionProvider>
-          <ThemeScript />
-          <ThemeProvider
-          >
-            {children}
-          </ThemeProvider>
-        </SessionProvider>
+        <Providers>
+          <SessionProvider>
+            <ThemeScript />
+            <ThemeProvider>
+              {children}
+              <Toaster />
+            </ThemeProvider>
+          </SessionProvider>
+        </Providers>
       </body>
     </html>
   );

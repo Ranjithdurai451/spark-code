@@ -44,6 +44,6 @@ export function decryptKey(encryptedKey: string, userId: string): string {
     Buffer.from(iv, "hex")
   );
   decipher.setAuthTag(Buffer.from(authTag, "hex"));
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
+  const decrypted = decipher.update(encrypted, "hex", "utf8");
   return decrypted + decipher.final("utf8");
 }

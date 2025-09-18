@@ -1,7 +1,8 @@
-import { getApiKeys } from "@/lib/getApiKeys";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGeminiClient } from "@/lib/model";
+import { executeOnJudge0 } from "@/lib/judge0";
 import { generateText } from "ai";
 import { NextRequest, NextResponse } from "next/server";
+import { requireCredits } from "@/lib/credits";
 
 const LANGUAGE_MAP: Record<string, number> = {
   javascript: 63,
@@ -13,9 +14,7 @@ const LANGUAGE_MAP: Record<string, number> = {
   go: 60,
 };
 
-const JUDGE0_URL =
-  "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true";
-let JUDGE0_KEY: string;
+// BYOK removed: use env via helpers
 
 interface CodeAnalysis {
   functionName: string;
@@ -216,7 +215,7 @@ function analyzeJavaCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `Java function detected: ${methodName} with ${analysis.parameters.length} parameters`
+          `Java function detected: ${methodName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -253,7 +252,7 @@ function analyzePythonCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `Python function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `Python function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -301,7 +300,7 @@ function analyzeCppCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `C++ function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `C++ function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -335,7 +334,7 @@ function analyzeCCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `C function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `C function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -370,7 +369,7 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `Go function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `Go function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -383,7 +382,7 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 // Enhanced JavaScript analysis
 function analyzeJavaScriptCode(
   code: string,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): CodeAnalysis {
   const cleanCode = removeCommentsAndStrings(code, "javascript");
 
@@ -424,7 +423,7 @@ function analyzeJavaScriptCode(
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `JavaScript function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `JavaScript function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -437,7 +436,7 @@ function analyzeJavaScriptCode(
 // Enhanced TypeScript analysis
 function analyzeTypeScriptCode(
   code: string,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): CodeAnalysis {
   const cleanCode = removeCommentsAndStrings(code, "typescript");
 
@@ -469,7 +468,7 @@ function analyzeTypeScriptCode(
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `TypeScript function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `TypeScript function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -677,7 +676,7 @@ function isExcludedMethod(name: string, language: string): boolean {
 // Enhanced data structure and algorithm pattern detection
 function detectDataStructuresAndPattern(
   code: string,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): void {
   const combined = code.toLowerCase();
 
@@ -803,7 +802,7 @@ function detectDataStructuresAndPattern(
   for (const { keywords, pattern } of patternMap) {
     if (
       keywords.some(
-        (keyword) => funcName.includes(keyword) || combined.includes(keyword)
+        (keyword) => funcName.includes(keyword) || combined.includes(keyword),
       )
     ) {
       analysis.algorithmPattern = pattern;
@@ -846,15 +845,15 @@ async function generateWrapperCode(
   language: string,
   testCase: any,
   analysis: CodeAnalysis,
-  gemini: any
+  gemini: any,
 ): Promise<string> {
   console.log(
-    `Generating wrapper code for ${language} with pattern: ${analysis.algorithmPattern}`
+    `Generating wrapper code for ${language} with pattern: ${analysis.algorithmPattern}`,
   );
 
   const prompt = LEETCODE_WRAPPER_PROMPT.replace(
     /{function_name}/g,
-    analysis.functionName
+    analysis.functionName,
   )
     .replace(/{function_params}/g, analysis.parameters.join(", "))
     .replace(/{return_type}/g, analysis.returnType)
@@ -862,7 +861,7 @@ async function generateWrapperCode(
     .replace(/{algorithm_pattern}/g, analysis.algorithmPattern)
     .replace(
       /{data_structures}/g,
-      Array.from(analysis.dataStructures).join(", ")
+      Array.from(analysis.dataStructures).join(", "),
     )
     .replace(/{test_input}/g, JSON.stringify(testCase.input))
     .replace(/{expected_output}/g, JSON.stringify(testCase.output))
@@ -882,7 +881,7 @@ async function generateWrapperCode(
     // Ensure Main class name for Judge0
     extractedCode = extractedCode.replace(
       /public\s+class\s+\w+/g,
-      "public class Main"
+      "public class Main",
     );
   }
 
@@ -927,7 +926,7 @@ function extractCode(aiResponse: string, language: string): string {
 // Execute code on Judge0 with retry logic
 async function executeCode(
   { code, language }: { code: string; language: string },
-  retries = 2
+  retries = 2,
 ) {
   const langId = LANGUAGE_MAP[language.toLowerCase()];
   if (!langId) throw new Error("Unsupported language");
@@ -936,42 +935,31 @@ async function executeCode(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(JUDGE0_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-RapidAPI-Key": JUDGE0_KEY,
-          "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-        },
-        body: JSON.stringify({
-          source_code: code,
-          language_id: langId,
+      try {
+        const response = await executeOnJudge0({
+          code,
+          languageId: langId,
           stdin: "",
-          cpu_time_limit: 3,
-          memory_limit: 256000,
-        }),
-      });
-
-      if (!response.ok) {
+        });
+        return response;
+      } catch (e: any) {
         if (
           attempt < retries &&
-          (response.status === 429 || response.status >= 500)
+          (e?.message?.includes("429") || e?.message?.includes("5"))
         ) {
           await new Promise((resolve) =>
-            setTimeout(resolve, (attempt + 1) * 1000)
+            setTimeout(resolve, (attempt + 1) * 1000),
           );
           continue;
         }
-        throw new Error(`Judge0 API Error: ${response.status}`);
+        throw e;
       }
-
-      return response.json();
     } catch (error) {
       console.error(`Judge0 execution failed (attempt ${attempt + 1}):`, error);
 
       if (attempt < retries) {
         await new Promise((resolve) =>
-          setTimeout(resolve, (attempt + 1) * 1000)
+          setTimeout(resolve, (attempt + 1) * 1000),
         );
         continue;
       }
@@ -1124,36 +1112,14 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
+    const credit = await requireCredits(req, 3, "ai_execute");
+    if (!credit.allowed) {
+      return NextResponse.json(credit.body, { status: credit.status });
+    }
     console.log("Starting enhanced code execution request...");
 
-    const {
-      code,
-      language = "java",
-      testCase,
-      judge0ApiKey: clientJudge0ApiKey,
-      geminiApiKey: clientGeminiApiKey,
-    } = await req.json();
-
-    // Get API keys
-    const keyInfo = await getApiKeys(req);
-    const geminiKey =
-      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
-    const judge0Key =
-      keyInfo.mode === "local" ? clientJudge0ApiKey : keyInfo.judge0Key;
-
-    if (!geminiKey || !judge0Key) {
-      return Response.json(
-        {
-          error: "NO_API_KEY",
-          message: "Both Gemini and Judge0 API keys are required",
-          mode: keyInfo.mode,
-        },
-        { status: 401 }
-      );
-    }
-
-    JUDGE0_KEY = judge0Key;
-    const gemini = createGoogleGenerativeAI({ apiKey: geminiKey });
+    const { code, language = "java", testCase } = await req.json();
+    const gemini = createGeminiClient();
 
     // Enhanced validation
     if (!LANGUAGE_MAP[language.toLowerCase()]) {
@@ -1163,7 +1129,7 @@ export async function POST(req: NextRequest) {
           supported: Object.keys(LANGUAGE_MAP),
           message: `Language '${language}' is not supported. Use one of: ${Object.keys(LANGUAGE_MAP).join(", ")}`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -1184,7 +1150,7 @@ export async function POST(req: NextRequest) {
             testCase: { input: [[2, 7, 11, 15], 9], output: [0, 1] },
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -1220,7 +1186,7 @@ export async function POST(req: NextRequest) {
           codePreview:
             code.substring(0, 200) + (code.length > 200 ? "..." : ""),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -1241,7 +1207,7 @@ export async function POST(req: NextRequest) {
       language,
       testCase,
       analysis,
-      gemini
+      gemini,
     );
     console.log(`Generated wrapper code (${executableCode.length} chars)`);
 
@@ -1264,7 +1230,7 @@ export async function POST(req: NextRequest) {
     if (result.compile_output?.trim()) {
       error = formatError(
         `Compilation Error: ${result.compile_output}`,
-        language
+        language,
       );
       executionStatus = "compilation_error";
     } else if (result.stderr?.trim()) {
@@ -1346,7 +1312,7 @@ export async function POST(req: NextRequest) {
         retryable:
           error.message.includes("429") || error.message.includes("50"),
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

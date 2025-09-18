@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGeminiClient } from "@/lib/model";
+import { requireCredits } from "@/lib/credits";
 import { generateText } from "ai";
 import {
   extractJavaFunction,
@@ -11,7 +12,7 @@ import {
   extractGoFunction,
   extractCSharpFunction,
 } from "@/lib/extractor";
-import { getApiKeys } from "@/lib/getApiKeys";
+// BYOK removed: gemini client is created from env
 
 // Improved documentation generation prompt
 const CODE_DOCUMENTATION_PROMPT = `
@@ -140,7 +141,7 @@ function detectLanguage(code: string): string {
 function detectAlgorithmPattern(
   functionName: string,
   parameters: string[],
-  code: string
+  code: string,
 ): string {
   const name = functionName.toLowerCase();
   const codeStr = code.toLowerCase();
@@ -229,30 +230,12 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const {
-      messages,
-      code,
-      language,
-      geminiApiKey: clientGeminiApiKey,
-    } = await req.json();
-    const keyInfo = await getApiKeys(req);
-    const geminiKey =
-      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
-
-    // Check if key available
-    if (!geminiKey) {
-      return Response.json(
-        {
-          error: "NO_API_KEY",
-          message: keyInfo.error || "Gemini API key required",
-          mode: keyInfo.mode,
-        },
-        { status: 401 }
-      );
+    const credit = await requireCredits(req, 1, "generate_docs");
+    if (!credit.allowed) {
+      return Response.json(credit.body, { status: credit.status });
     }
-    const gemini = createGoogleGenerativeAI({
-      apiKey: geminiKey,
-    });
+    const { messages, code, language } = await req.json();
+    const gemini = createGeminiClient();
 
     // Extract code from request
     let codeToDocument = code;
@@ -289,7 +272,7 @@ export async function POST(req: NextRequest) {
           suggestion: "Include a complete function or method implementation",
           retryable: true,
         }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -311,12 +294,12 @@ export async function POST(req: NextRequest) {
     // Build documentation prompt
     const documentationPrompt = CODE_DOCUMENTATION_PROMPT.replace(
       /\{user_code\}/g,
-      codeToDocument
+      codeToDocument,
     )
       .replace(/\{language\}/g, detectedLanguage)
       .replace(
         /\{function_signature\}/g,
-        functionInfo.signature || "Not detected"
+        functionInfo.signature || "Not detected",
       )
       .replace(/\{algorithm_pattern\}/g, functionInfo.algorithmPattern);
 

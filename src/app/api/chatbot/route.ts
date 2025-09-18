@@ -1,8 +1,9 @@
 // app/api/chatbot/route.ts
 import { NextRequest } from "next/server";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGeminiClient } from "@/lib/model";
+import { requireCredits } from "@/lib/credits";
 import { streamText } from "ai";
-import { getApiKeys } from "@/lib/getApiKeys";
+// BYOK removed: gemini client is created from env
 
 const dsaChatbotPrompt = `
 You are an elite DSA (Data Structures & Algorithms) Expert and Coding Mentor with deep expertise in competitive programming and software engineering interviews.
@@ -100,25 +101,12 @@ Remember: Every interaction should leave the user feeling more confident and kno
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, currentTab, clientGeminiApiKey } = await req.json();
-    const keyInfo = await getApiKeys(req);
-    const geminiKey =
-      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
-    console.log(geminiKey);
-    // Check if key available
-    if (!geminiKey) {
-      return Response.json(
-        {
-          error: "NO_API_KEY",
-          message: keyInfo.error || "Gemini API key required",
-          mode: keyInfo.mode,
-        },
-        { status: 401 }
-      );
+    const credit = await requireCredits(req, 1, "chatbot");
+    if (!credit.allowed) {
+      return Response.json(credit.body, { status: credit.status });
     }
-    const gemini = createGoogleGenerativeAI({
-      apiKey: geminiKey,
-    });
+    const { messages, currentTab } = await req.json();
+    const gemini = createGeminiClient();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return new Response(
@@ -126,7 +114,7 @@ export async function POST(req: NextRequest) {
         {
           status: 400,
           headers: { "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -196,7 +184,7 @@ ${currentTab.code}
     // Check if any message in the conversation contains code (for fallback/general context)
     const hasCodeInConversation = messages.some(
       (msg) =>
-        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content)
+        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content),
     );
 
     // Create specialized context based on request type
@@ -360,7 +348,7 @@ Please provide a detailed, helpful response that demonstrates expertise while be
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }

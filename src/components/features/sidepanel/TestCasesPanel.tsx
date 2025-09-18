@@ -55,7 +55,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Codeblock } from "@/components/mardown-render/CodeBlock";
-import { useCredentialsStore } from "@/components/root/credentialsStore";
+// BYOK removed: no credentials store for keys needed
 
 interface TestCase {
     id: string;
@@ -133,7 +133,7 @@ export function TestCasesPanel({
     const [runningTestId, setRunningTestId] = useState<string | null>(null);
     const [pauseRequested, setPauseRequested] = useState(false);
     const [currentTestIndex, setCurrentTestIndex] = useState(0);
-    const { geminiApiKey, judge0ApiKey } = useCredentialsStore();
+
 
     // New state for enhanced analytics
     const [executionStats, setExecutionStats] = useState({
@@ -443,8 +443,7 @@ export function TestCasesPanel({
                         input: testCase.input,
                         output: testCase.output
                     },
-                    geminiApiKey: geminiApiKey?.value,
-                    judge0ApiKey: judge0ApiKey?.value
+
                 }),
                 headers: { "Content-Type": "application/json" },
                 signal: controller.signal

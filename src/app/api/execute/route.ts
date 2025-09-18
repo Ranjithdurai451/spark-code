@@ -1,6 +1,7 @@
 // app/api/execute/route.ts
-import { getApiKeys } from "@/lib/getApiKeys";
 import { NextRequest, NextResponse } from "next/server";
+import { requireCredits } from "@/lib/credits";
+import { executeOnJudge0 } from "@/lib/judge0";
 
 const LANGUAGE_MAP: Record<string, number> = {
   python: 71,
@@ -13,39 +14,21 @@ const LANGUAGE_MAP: Record<string, number> = {
   typescript: 74,
 };
 
-const JUDGE0_URL = "https://judge0-ce.p.rapidapi.com/submissions";
-let JUDGE0_KEY;
+// BYOK removed: keys are sourced from env via executeOnJudge0
 
 export async function POST(req: NextRequest) {
   try {
-    const {
-      code,
-      language,
-      input,
-      judge0ApiKey: clientJudge0ApiKey,
-    } = await req.json();
-    const keyInfo = await getApiKeys(req);
-    const judge0Key =
-      keyInfo.mode === "local" ? clientJudge0ApiKey : keyInfo.judge0Key;
-
-    // Check if key available
-    if (!judge0Key) {
-      return Response.json(
-        {
-          error: "NO_API_KEY",
-          message: keyInfo.error || "Gemini API key required",
-          mode: keyInfo.mode,
-        },
-        { status: 401 }
-      );
+    const credit = await requireCredits(req, 2, "execute");
+    if (!credit.allowed) {
+      return NextResponse.json(credit.body, { status: credit.status });
     }
-    JUDGE0_KEY = judge0Key;
+    const { code, language, input } = await req.json();
 
     // Validate inputs
     if (!code || !language) {
       return NextResponse.json(
         { error: "Code and language are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -56,7 +39,7 @@ export async function POST(req: NextRequest) {
           error: `Unsupported language: ${language}`,
           supportedLanguages: Object.keys(LANGUAGE_MAP),
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -74,7 +57,7 @@ export async function POST(req: NextRequest) {
     console.error("Execution error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -83,7 +66,7 @@ function forceMainClass(src: string): string {
   const re = /\bpublic\s+class\s+([A-Za-z_][A-Za-z0-9_]*)/;
   return re.test(src)
     ? src.replace(re, (_, name) =>
-        name === "Main" ? `public class Main` : `public class Main`
+        name === "Main" ? `public class Main` : `public class Main`,
       )
     : src; // no public class found → leave unchanged
 }
@@ -100,27 +83,11 @@ async function executeCode({
 }) {
   const patchedCode =
     language.toLowerCase() === "java" ? forceMainClass(code) : code;
-  const response = await fetch(`${JUDGE0_URL}?base64_encoded=false&wait=true`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-RapidAPI-Key": JUDGE0_KEY!,
-      "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-    },
-    body: JSON.stringify({
-      source_code: patchedCode,
-      language_id: languageId,
-      stdin: input,
-    }),
+  const data = await executeOnJudge0({
+    code: patchedCode,
+    languageId,
+    stdin: input,
   });
-
-  if (!response.ok) {
-    throw new Error(
-      `Judge0 API error: ${response.status} ${response.statusText}`
-    );
-  }
-
-  const data = await response.json();
 
   // Format the output
   let output = data.stdout || "";

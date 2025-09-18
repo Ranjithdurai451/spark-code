@@ -39,7 +39,7 @@ interface SidePanelProps {
 }
 
 export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
-    const { clearApiKeys, geminiApiKey, judge0ApiKey } = useCredentialsStore();
+    const { clearApiKeys } = useCredentialsStore();
     const { activeTabId, tabs } = useEditorStore();
     const [running, setRunning] = useState(false);
     const [output, setOutput] = useState("");
@@ -48,7 +48,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
     const [analysisError, setAnalysisError] = useState<{ message: string; suggestion?: string; category?: string } | null>(null);
     const [testError, setTestError] = useState<{ message: string; suggestion?: string; category?: string } | null>(null);
 
-    var tab: Tab | undefined = tabs.find((item) => item.id == activeTabId);
+    const tab: Tab | undefined = tabs.find((item) => item.id == activeTabId);
 
     // Chat hooks with simple error handling
     const {
@@ -128,7 +128,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await append({
             role: "user",
             content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, geminiApiKey: geminiApiKey?.value } });
+        }, { body: { code, language } });
     }
 
     async function handleGenerateTests() {
@@ -156,7 +156,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await appendTest({
             role: "user",
             content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "testcases", geminiApiKey: geminiApiKey?.value } });
+        }, { body: { code, language, type: "testcases" } });
 
     }
 
@@ -173,7 +173,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         try {
             const res = await fetch("/api/execute", {
                 method: "POST",
-                body: JSON.stringify({ code, language, judge0ApiKey: judge0ApiKey?.value }),
+                body: JSON.stringify({ code, language }),
                 headers: { "Content-Type": "application/json" },
             });
             const data = await res.json();
@@ -270,7 +270,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await append({
             role: "user",
             content: `Analyze this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, geminiApiKey: geminiApiKey?.value } });
+        }, { body: { code, language } });
 
     };
 
@@ -299,7 +299,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
         await appendTest({
             role: "user",
             content: `Generate comprehensive test cases for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``
-        }, { body: { code, language, type: "testcases", geminiApiKey: geminiApiKey?.value } });
+        }, { body: { code, language, type: "testcases" } });
     };
 
     const actions = [

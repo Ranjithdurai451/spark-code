@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGeminiClient } from "@/lib/model";
+import { requireCredits } from "@/lib/credits";
 import { streamText } from "ai";
 import { extractFunctionInfo } from "@/lib/extractor";
-import { getApiKeys } from "@/lib/getApiKeys";
+// BYOK removed: gemini client is created from env
 
 // Enhanced analysis prompt with better structure
 const CODE_ANALYSIS_PROMPT = `
@@ -120,7 +121,7 @@ function detectLanguage(code: string): string {
 // Enhanced code quality assessment
 function assessCodeQuality(
   code: string,
-  language: string
+  language: string,
 ): { score: number; level: string } {
   let score = 5; // Base score
 
@@ -162,30 +163,15 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const {
-      messages,
-      code,
-      language,
-      geminiApiKey: clientGeminiApiKey,
-    } = await req.json();
-    const keyInfo = await getApiKeys(req);
-    const geminiKey =
-      keyInfo.mode === "local" ? clientGeminiApiKey : keyInfo.geminiKey;
-    console.log(geminiKey);
-    // Check if key available
-    if (!geminiKey) {
-      return Response.json(
-        {
-          error: "NO_API_KEY",
-          message: keyInfo.error || "Gemini API key required",
-          mode: keyInfo.mode,
-        },
-        { status: 401 }
-      );
+    const credit = await requireCredits(req, 1, "analyze");
+    if (!credit.allowed) {
+      return new Response(JSON.stringify(credit.body), {
+        status: credit.status,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    const gemini = createGoogleGenerativeAI({
-      apiKey: geminiKey,
-    });
+    const { messages, code, language } = await req.json();
+    const gemini = createGeminiClient();
 
     // Extract code from request
     let codeToAnalyze = code;
@@ -214,7 +200,7 @@ export async function POST(req: NextRequest) {
           suggestion: "Include a complete function or method implementation",
           retryable: true,
         }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -245,7 +231,7 @@ export async function POST(req: NextRequest) {
           ],
           retryable: true,
         }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -264,13 +250,13 @@ export async function POST(req: NextRequest) {
     // Generate optimization example (basic template)
     const optimizationExample = generateOptimizationExample(
       functionInfo,
-      codeToAnalyze
+      codeToAnalyze,
     );
 
     // Build analysis prompt
     const analysisPrompt = CODE_ANALYSIS_PROMPT.replace(
       /\{user_code\}/g,
-      codeToAnalyze
+      codeToAnalyze,
     )
       .replace(/\{language\}/g, detectedLanguage)
       .replace(/\{function_signature\}/g, functionInfo.signature)
@@ -280,7 +266,7 @@ export async function POST(req: NextRequest) {
       .replace(/\{optimization_example\}/g, optimizationExample)
       .replace(
         /\{overall_summary\}/g,
-        `demonstrates ${functionInfo.algorithmPattern} with ${quality.level} implementation quality`
+        `demonstrates ${functionInfo.algorithmPattern} with ${quality.level} implementation quality`,
       );
 
     // Stream the analysis
@@ -301,7 +287,7 @@ export async function POST(req: NextRequest) {
     response.headers.set("X-Quality-Level", quality.level);
     response.headers.set(
       "X-Processing-Time",
-      (Date.now() - startTime).toString()
+      (Date.now() - startTime).toString(),
     );
 
     return response;
@@ -326,7 +312,7 @@ export async function POST(req: NextRequest) {
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      }
+      },
     );
   }
 }
@@ -334,7 +320,7 @@ export async function POST(req: NextRequest) {
 // Generate basic optimization example
 function generateOptimizationExample(
   functionInfo: FunctionInfo,
-  code: string
+  code: string,
 ): string {
   const patterns = {
     linked_list_reversal: `// Optimized with clear variable names and comments

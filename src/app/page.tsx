@@ -8,17 +8,47 @@ import Header from "@/components/root/Header";
 import MobileNotSupported from "@/components/root/MobileNotSupported";
 import { useState, useEffect, useRef, useCallback, RefObject } from "react";
 import { Button } from "@/components/ui/button";
-import { Code2, Layout, ChevronRight, PanelRightOpen, Maximize2, GripVertical, Move } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Code2,
+  Layout,
+  ChevronRight,
+  PanelRightOpen,
+  Maximize2,
+  GripVertical,
+  Move,
+  Loader2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { motion, AnimatePresence, useMotionValue, useDragControls, MotionValue, DragControls } from "framer-motion";
+import {
+  motion,
+  AnimatePresence,
+  useMotionValue,
+  useDragControls,
+  MotionValue,
+  DragControls,
+} from "framer-motion";
 import { useCredentialsStore } from "@/components/root/credentialsStore";
-import BYOKDialog from "@/components/root/BYOKDialog";
+import { useSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import { useSessionSync } from "@/components/root/useSessionSync";
 import { useMediaQuery } from "@/components/root/useMedia";
 
-type ViewMode = 'normal' | 'code';
+type ViewMode = "normal" | "code";
 
 // Helper easing curves
 const smoothEase = [0.23, 1, 0.32, 1] as const;
@@ -43,14 +73,26 @@ interface DraggableControlsProps {
 }
 
 const DraggableControls = ({
-  controlsX, controlsY, dragControls, containerRef, isControlsDragging, setIsControlsDragging, viewMode, isTransitioning, isPanelVisible, togglePanel, toggleViewMode
+  controlsX,
+  controlsY,
+  dragControls,
+  containerRef,
+  isControlsDragging,
+  setIsControlsDragging,
+  viewMode,
+  isTransitioning,
+  isPanelVisible,
+  togglePanel,
+  toggleViewMode,
 }: DraggableControlsProps) => (
   <motion.div
     className="fixed z-50"
     style={{
-      top: "5px", left: "50%", translateX: "-50%",
+      top: "5px",
+      left: "50%",
+      translateX: "-50%",
       x: controlsX,
-      y: controlsY
+      y: controlsY,
     }}
     drag
     dragListener={false}
@@ -68,22 +110,34 @@ const DraggableControls = ({
         className={cn(
           "flex items-center gap-1 bg-background/95 backdrop-blur-3xl rounded-2xl border shadow-xl p-1.5",
           "ring-1 ring-white/5 select-none",
-          isControlsDragging && "shadow-2xl ring-2 ring-primary/20 border-primary/20"
+          isControlsDragging &&
+            "shadow-2xl ring-2 ring-primary/20 border-primary/20",
         )}
-        animate={{ boxShadow: isControlsDragging ? "0 25px 80px -10px rgba(0, 0, 0, 0.25)" : "0 15px 40px -5px rgba(0, 0, 0, 0.12)" }}
+        animate={{
+          boxShadow: isControlsDragging
+            ? "0 25px 80px -10px rgba(0, 0, 0, 0.25)"
+            : "0 15px 40px -5px rgba(0, 0, 0, 0.12)",
+        }}
         transition={{ duration: 0.2, ease: smoothEase }}
       >
         <motion.div
           className="flex items-center justify-center w-7 h-7 rounded-xl bg-muted/20 cursor-grab active:cursor-grabbing"
           onPointerDown={(e) => dragControls.start(e)}
-          whileHover={{ backgroundColor: "rgba(var(--primary) / 0.1)", scale: 1.05 }}
+          whileHover={{
+            backgroundColor: "rgba(var(--primary) / 0.1)",
+            scale: 1.05,
+          }}
           whileTap={{ scale: 0.95 }}
-          animate={{ backgroundColor: isControlsDragging ? "rgba(var(--primary) / 0.15)" : "rgba(var(--muted) / 0.2)" }}
+          animate={{
+            backgroundColor: isControlsDragging
+              ? "rgba(var(--primary) / 0.15)"
+              : "rgba(var(--muted) / 0.2)",
+          }}
         >
           <Move className="w-3 h-3 text-muted-foreground pointer-events-none" />
         </motion.div>
         <AnimatePresence>
-          {viewMode === 'normal' && !isTransitioning && (
+          {viewMode === "normal" && !isTransitioning && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: "auto", opacity: 1 }}
@@ -93,13 +147,23 @@ const DraggableControls = ({
             >
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" onClick={togglePanel} className="h-8 w-8 hover:bg-muted/40 transition-all duration-300 rounded-xl">
-                    <motion.div animate={{ rotate: isPanelVisible ? 0 : 180 }} transition={{ duration: 0.4, ease: bounceEase }}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={togglePanel}
+                    className="h-8 w-8 hover:bg-muted/40 transition-all duration-300 rounded-xl"
+                  >
+                    <motion.div
+                      animate={{ rotate: isPanelVisible ? 0 : 180 }}
+                      transition={{ duration: 0.4, ease: bounceEase }}
+                    >
                       <ChevronRight className="w-4 h-4" />
                     </motion.div>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent><p>{isPanelVisible ? 'Hide Panel' : 'Show Panel'} (Ctrl+B)</p></TooltipContent>
+                <TooltipContent>
+                  <p>{isPanelVisible ? "Hide Panel" : "Show Panel"} (Ctrl+B)</p>
+                </TooltipContent>
               </Tooltip>
             </motion.div>
           )}
@@ -107,59 +171,141 @@ const DraggableControls = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant={viewMode === 'code' ? "default" : "ghost"} size="sm" onClick={toggleViewMode} disabled={isTransitioning}
-              className={cn("h-8 w-8 transition-all duration-400 rounded-xl relative overflow-hidden", viewMode === 'code' ? "bg-primary text-primary-foreground shadow-md shadow-primary/25" : "hover:bg-muted/40", isTransitioning && "opacity-50 cursor-not-allowed")}
+              variant={viewMode === "code" ? "default" : "ghost"}
+              size="sm"
+              onClick={toggleViewMode}
+              disabled={isTransitioning}
+              className={cn(
+                "h-8 w-8 transition-all duration-400 rounded-xl relative overflow-hidden",
+                viewMode === "code"
+                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/25"
+                  : "hover:bg-muted/40",
+                isTransitioning && "opacity-50 cursor-not-allowed",
+              )}
             >
-              <motion.div className="relative z-10" animate={{ scale: isTransitioning ? 0.9 : 1 }} transition={{ duration: 0.2, ease: smoothEase }}>
+              <motion.div
+                className="relative z-10"
+                animate={{ scale: isTransitioning ? 0.9 : 1 }}
+                transition={{ duration: 0.2, ease: smoothEase }}
+              >
                 <AnimatePresence mode="wait">
-                  <motion.div key={viewMode} initial={{ opacity: 0, scale: 0.6, rotate: -45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.6, rotate: 45 }} transition={{ duration: 0.3, ease: bounceEase }}>
-                    {viewMode === 'code' ? <Layout className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  <motion.div
+                    key={viewMode}
+                    initial={{ opacity: 0, scale: 0.6, rotate: -45 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    exit={{ opacity: 0, scale: 0.6, rotate: 45 }}
+                    transition={{ duration: 0.3, ease: bounceEase }}
+                  >
+                    {viewMode === "code" ? (
+                      <Layout className="w-4 h-4" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4" />
+                    )}
                   </motion.div>
                 </AnimatePresence>
               </motion.div>
               <AnimatePresence>
-                {viewMode === 'code' && (<motion.div className="absolute inset-0 bg-gradient-to-br from-primary/90 to-primary/70" initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }} transition={{ duration: 0.4, ease: bounceEase }} />)}
+                {viewMode === "code" && (
+                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-br from-primary/90 to-primary/70"
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: bounceEase }}
+                  />
+                )}
               </AnimatePresence>
             </Button>
           </TooltipTrigger>
           {/* ## CHANGE: Renamed "Focus Mode" to "Code Mode" ## */}
-          <TooltipContent><div className="text-center"><p>{viewMode === 'code' ? 'Normal View' : 'Code Mode'}</p><p className="text-xs text-muted-foreground">Ctrl+Shift+F</p></div></TooltipContent>
+          <TooltipContent>
+            <div className="text-center">
+              <p>{viewMode === "code" ? "Normal View" : "Code Mode"}</p>
+              <p className="text-xs text-muted-foreground">Ctrl+Shift+F</p>
+            </div>
+          </TooltipContent>
         </Tooltip>
       </motion.div>
     </TooltipProvider>
-  </motion.div >
+  </motion.div>
 );
 
 const ModeIndicator = ({ viewMode }: { viewMode: ViewMode }) => (
   <AnimatePresence>
-    {viewMode === 'code' && (
-      <motion.div className="fixed bottom-6 left-6 z-50" initial={{ opacity: 0, y: 30, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 30, scale: 0.8 }} transition={{ type: "spring", stiffness: 300, damping: 25, delay: 0.3 }}>
-        <Badge variant="outline" className="bg-background/95 backdrop-blur-2xl border-primary/30 text-primary px-6 py-3 shadow-xl rounded-2xl">
+    {viewMode === "code" && (
+      <motion.div
+        className="fixed bottom-6 left-6 z-50"
+        initial={{ opacity: 0, y: 30, scale: 0.8 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 30, scale: 0.8 }}
+        transition={{ type: "spring", stiffness: 300, damping: 25, delay: 0.3 }}
+      >
+        <Badge
+          variant="outline"
+          className="bg-background/95 backdrop-blur-2xl border-primary/30 text-primary px-6 py-3 shadow-xl rounded-2xl"
+        >
           <Code2 className="w-4 h-4 mr-3" />
           {/* ## CHANGE: Renamed "Focus Mode" to "Code Mode" ## */}
           <span className="font-medium">Code Mode</span>
-          <span className="ml-4 text-xs text-muted-foreground opacity-70">Press Esc to exit</span>
+          <span className="ml-4 text-xs text-muted-foreground opacity-70">
+            Press Esc to exit
+          </span>
         </Badge>
       </motion.div>
     )}
   </AnimatePresence>
 );
 
-const PanelExpander = ({ isPanelVisible, viewMode, isTransitioning, showPanel }: { isPanelVisible: boolean; viewMode: ViewMode; isTransitioning: boolean; showPanel: () => void; }) => (
+const PanelExpander = ({
+  isPanelVisible,
+  viewMode,
+  isTransitioning,
+  showPanel,
+}: {
+  isPanelVisible: boolean;
+  viewMode: ViewMode;
+  isTransitioning: boolean;
+  showPanel: () => void;
+}) => (
   <AnimatePresence>
-    {!isPanelVisible && viewMode === 'normal' && !isTransitioning && (
-      <motion.div className="fixed right-4 top-1/2 -translate-y-1/2 z-40" initial={{ opacity: 0, x: 30, scale: 0.8 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 30, scale: 0.8 }} transition={{ type: "spring", stiffness: 300, damping: 25, delay: 0.2 }}>
+    {!isPanelVisible && viewMode === "normal" && !isTransitioning && (
+      <motion.div
+        className="fixed right-4 top-1/2 -translate-y-1/2 z-40"
+        initial={{ opacity: 0, x: 30, scale: 0.8 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
+        exit={{ opacity: 0, x: 30, scale: 0.8 }}
+        transition={{ type: "spring", stiffness: 300, damping: 25, delay: 0.2 }}
+      >
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <motion.div whileHover={{ scale: 1.05, x: -4 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="outline" size="lg" onClick={showPanel} className="h-24 w-12 rounded-2xl bg-background/95 hover:bg-primary/5 border border-border/40 shadow-xl backdrop-blur-2xl transition-all duration-300 flex flex-col gap-2">
-                  <motion.div animate={{ x: [-2, 2, -2] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}><PanelRightOpen className="w-5 h-5 text-primary" /></motion.div>
+              <motion.div
+                whileHover={{ scale: 1.05, x: -4 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={showPanel}
+                  className="h-24 w-12 rounded-2xl bg-background/95 hover:bg-primary/5 border border-border/40 shadow-xl backdrop-blur-2xl transition-all duration-300 flex flex-col gap-2"
+                >
+                  <motion.div
+                    animate={{ x: [-2, 2, -2] }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                  >
+                    <PanelRightOpen className="w-5 h-5 text-primary" />
+                  </motion.div>
                   <div className="w-1 h-8 bg-gradient-to-b from-primary/30 via-primary/60 to-primary/30 rounded-full" />
                 </Button>
               </motion.div>
             </TooltipTrigger>
-            <TooltipContent side="left"><p>Show Side Panel</p></TooltipContent>
+            <TooltipContent side="left">
+              <p>Show Side Panel</p>
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </motion.div>
@@ -176,7 +322,13 @@ interface ResizeHandleProps {
   containerRef: RefObject<HTMLDivElement>;
 }
 
-const SmoothResizeHandle = ({ isPanelVisible, viewMode, onResize, panelWidth, containerRef }: ResizeHandleProps) => {
+const SmoothResizeHandle = ({
+  isPanelVisible,
+  viewMode,
+  onResize,
+  panelWidth,
+  containerRef,
+}: ResizeHandleProps) => {
   const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
@@ -188,7 +340,10 @@ const SmoothResizeHandle = ({ isPanelVisible, viewMode, onResize, panelWidth, co
       const containerRect = containerRef.current.getBoundingClientRect();
       const mouseX = e.clientX - containerRect.left;
       const newWidth = containerRect.width - mouseX;
-      const clampedWidth = Math.max(300, Math.min(containerRect.width * 0.6, newWidth));
+      const clampedWidth = Math.max(
+        300,
+        Math.min(containerRect.width * 0.6, newWidth),
+      );
 
       onResize(clampedWidth);
     };
@@ -197,22 +352,22 @@ const SmoothResizeHandle = ({ isPanelVisible, viewMode, onResize, panelWidth, co
       setIsResizing(false);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, [isResizing, onResize, containerRef]);
 
   return (
     <AnimatePresence>
-      {isPanelVisible && viewMode === 'normal' && (
+      {isPanelVisible && viewMode === "normal" && (
         <motion.div
           className="absolute left-0 top-0 bottom-0 w-2 z-30 cursor-col-resize group flex items-center justify-center"
           initial={{ opacity: 0 }}
@@ -224,18 +379,22 @@ const SmoothResizeHandle = ({ isPanelVisible, viewMode, onResize, panelWidth, co
           <motion.div
             className="w-1 h-full bg-transparent group-hover:bg-primary/20 rounded-full transition-colors duration-200"
             animate={{
-              backgroundColor: isResizing ? "rgba(var(--primary) / 0.4)" : "transparent",
-              width: isResizing ? "2px" : "1px"
+              backgroundColor: isResizing
+                ? "rgba(var(--primary) / 0.4)"
+                : "transparent",
+              width: isResizing ? "2px" : "1px",
             }}
             transition={{ duration: 0.2 }}
           />
           <motion.div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-            animate={{
-              // opacity: isResizing ? 1 : 0,
-              // scale: isResizing ? 1.2 : 1
-            }}
-          // transition={{ duration: 0.2 }}
+            animate={
+              {
+                // opacity: isResizing ? 1 : 0,
+                // scale: isResizing ? 1.2 : 1
+              }
+            }
+            // transition={{ duration: 0.2 }}
           >
             <GripVertical className="w-3 h-3 text-primary/80" />
           </motion.div>
@@ -250,11 +409,12 @@ const SmoothResizeHandle = ({ isPanelVisible, viewMode, onResize, panelWidth, co
 // ###############################################
 
 export default function Home() {
-  const [viewMode, setViewMode] = useState<ViewMode>('normal');
+  const [viewMode, setViewMode] = useState<ViewMode>("normal");
   const [isPanelVisible, setIsPanelVisible] = useState(true);
   const [panelWidth, setPanelWidth] = useState(600);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isControlsDragging, setIsControlsDragging] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   // ## NEW: Track if this is the initial render
   const [hasInitiallyRendered, setHasInitiallyRendered] = useState(false);
 
@@ -277,20 +437,37 @@ export default function Home() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTransitioning) return;
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'f') { event.preventDefault(); toggleViewMode(); }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b' && viewMode === 'normal') { event.preventDefault(); togglePanel(); }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "f"
+      ) {
+        event.preventDefault();
+        toggleViewMode();
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "b" &&
+        viewMode === "normal"
+      ) {
+        event.preventDefault();
+        togglePanel();
+      }
       // ## CHANGE: Renamed function call to exitCodeMode ##
-      if (event.key === 'Escape' && viewMode === 'code') { event.preventDefault(); exitCodeMode(); }
+      if (event.key === "Escape" && viewMode === "code") {
+        event.preventDefault();
+        exitCodeMode();
+      }
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [viewMode, isTransitioning]);
 
   const toggleViewMode = useCallback(() => {
     if (isTransitioning) return;
     setIsTransitioning(true);
-    const isEnteringCodeMode = viewMode === 'normal';
-    setViewMode(isEnteringCodeMode ? 'code' : 'normal');
+    const isEnteringCodeMode = viewMode === "normal";
+    setViewMode(isEnteringCodeMode ? "code" : "normal");
     if (!isEnteringCodeMode) {
       setTimeout(() => setIsPanelVisible(true), 200);
     }
@@ -299,20 +476,22 @@ export default function Home() {
 
   // ## CHANGE: Renamed function from exitFocusMode to exitCodeMode ##
   const exitCodeMode = useCallback(() => {
-    if (isTransitioning || viewMode === 'normal') return;
+    if (isTransitioning || viewMode === "normal") return;
     setIsTransitioning(true);
-    setViewMode('normal');
+    setViewMode("normal");
     setTimeout(() => setIsPanelVisible(true), 200);
     setTimeout(() => setIsTransitioning(false), 600);
   }, [viewMode, isTransitioning]);
 
   const togglePanel = useCallback(() => {
-    if (viewMode !== 'normal' || isTransitioning) return;
-    setIsPanelVisible(prev => !prev);
+    if (viewMode !== "normal" || isTransitioning) return;
+    setIsPanelVisible((prev) => !prev);
   }, [viewMode, isTransitioning]);
 
   const showPanel = useCallback(() => {
-    if (viewMode === 'normal' && !isTransitioning) { setIsPanelVisible(true); }
+    if (viewMode === "normal" && !isTransitioning) {
+      setIsPanelVisible(true);
+    }
   }, [viewMode, isTransitioning]);
 
   const handlePanelResize = useCallback((width: number) => {
@@ -320,20 +499,55 @@ export default function Home() {
   }, []);
 
   const containerVariants = {
-    normal: { background: "hsl(var(--muted) / 0.15)", transition: { duration: 0.6, ease: smoothEase } },
-    code: { background: "hsl(var(--background))", transition: { duration: 0.6, ease: smoothEase } }
+    normal: {
+      background: "hsl(var(--muted) / 0.15)",
+      transition: { duration: 0.6, ease: smoothEase },
+    },
+    code: {
+      background: "hsl(var(--background))",
+      transition: { duration: 0.6, ease: smoothEase },
+    },
   };
   const headerVariants = {
-    visible: { opacity: 1, y: 0, height: "auto", transition: { duration: 0.5, ease: smoothEase, opacity: { duration: 0.3, delay: 0.1 }, height: { duration: 0.6 } } },
-    hidden: { opacity: 0, y: -30, height: 0, transition: { duration: 0.4, ease: quickEase, opacity: { duration: 0.2 }, height: { duration: 0.5, delay: 0.1 } } }
+    visible: {
+      opacity: 1,
+      y: 0,
+      height: "auto",
+      transition: {
+        duration: 0.5,
+        ease: smoothEase,
+        opacity: { duration: 0.3, delay: 0.1 },
+        height: { duration: 0.6 },
+      },
+    },
+    hidden: {
+      opacity: 0,
+      y: -30,
+      height: 0,
+      transition: {
+        duration: 0.4,
+        ease: quickEase,
+        opacity: { duration: 0.2 },
+        height: { duration: 0.5, delay: 0.1 },
+      },
+    },
   };
   const contentVariants = {
-    normal: { padding: "0.75rem", transition: { duration: 0.6, ease: smoothEase } },
-    code: { padding: "0rem", transition: { duration: 0.6, ease: smoothEase } }
+    normal: {
+      padding: "0.75rem",
+      transition: { duration: 0.6, ease: smoothEase },
+    },
+    code: { padding: "0rem", transition: { duration: 0.6, ease: smoothEase } },
   };
   const editorVariants = {
-    normal: { borderRadius: "0.875rem", transition: { duration: 0.6, ease: smoothEase } },
-    code: { borderRadius: "0rem", transition: { duration: 0.6, ease: smoothEase } }
+    normal: {
+      borderRadius: "0.875rem",
+      transition: { duration: 0.6, ease: smoothEase },
+    },
+    code: {
+      borderRadius: "0rem",
+      transition: { duration: 0.6, ease: smoothEase },
+    },
   };
 
   // ## UPDATED: Dynamic panel variants based on initial render state
@@ -344,24 +558,26 @@ export default function Home() {
       scale: 1,
       filter: "blur(0px)",
       visibility: "visible",
-      transition: hasInitiallyRendered ? {
-        // Full animation for non-initial renders (toggles, mode switches)
-        duration: 0.5,
-        ease: smoothEase,
-        staggerChildren: 0.03,
-        delayChildren: 0.1,
-        opacity: { duration: 0.5, ease: smoothEase },
-        x: { duration: 0.5, ease: smoothEase },
-        scale: { duration: 0.5, ease: smoothEase },
-        filter: { duration: 0.5, ease: smoothEase }
-      } : {
-        // Instant transition for initial render
-        duration: 0,
-        opacity: { duration: 0 },
-        x: { duration: 0 },
-        scale: { duration: 0 },
-        filter: { duration: 0 }
-      }
+      transition: hasInitiallyRendered
+        ? {
+            // Full animation for non-initial renders (toggles, mode switches)
+            duration: 0.5,
+            ease: smoothEase,
+            staggerChildren: 0.03,
+            delayChildren: 0.1,
+            opacity: { duration: 0.5, ease: smoothEase },
+            x: { duration: 0.5, ease: smoothEase },
+            scale: { duration: 0.5, ease: smoothEase },
+            filter: { duration: 0.5, ease: smoothEase },
+          }
+        : {
+            // Instant transition for initial render
+            duration: 0,
+            opacity: { duration: 0 },
+            x: { duration: 0 },
+            scale: { duration: 0 },
+            filter: { duration: 0 },
+          },
     },
     hidden: {
       x: 40,
@@ -376,25 +592,93 @@ export default function Home() {
         opacity: { duration: 0.4, ease: smoothEase },
         x: { duration: 0.4, ease: smoothEase },
         scale: { duration: 0.4, ease: smoothEase },
-        filter: { duration: 0.4, ease: smoothEase }
-      }
-    }
+        filter: { duration: 0.4, ease: smoothEase },
+      },
+    },
   };
 
   useSessionSync();
   const { hasApiKeys } = useCredentialsStore();
+  const { data: session, status } = useSession();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   return (
     <Providers>
-      <div className="lg:hidden"><MobileNotSupported /></div>
-      <BYOKDialog open={isDesktop && !hasApiKeys()} onOpenChange={() => { }} />
+      <div className="lg:hidden">
+        <MobileNotSupported />
+      </div>
+      {/* Show GitHub sign-in dialog if not authenticated */}
+      <Dialog open={isDesktop && status !== "loading" && !session}>
+        <DialogContent className="sm:max-w-md">
+          <div className="flex flex-col items-center text-center space-y-6 py-6">
+            {/* Logo/Icon */}
+            <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-primary-foreground"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+              </svg>
+            </div>
 
+            {/* Title */}
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">Welcome to SparkCode</h2>
+              <p className="text-sm text-muted-foreground">
+                Sign in to start coding with AI
+              </p>
+            </div>
 
-      <motion.div ref={containerRef} className="hidden lg:flex flex-col h-screen relative overflow-hidden" variants={containerVariants} animate={viewMode} initial={false}>
+            {/* Sign in button */}
+            <Button
+              size="lg"
+              className="w-full gap-2"
+              disabled={isSigningIn}
+              onClick={async () => {
+                setIsSigningIn(true);
+                try {
+                  await signIn("github", { callbackUrl: window.location.href });
+                } catch (error) {
+                  setIsSigningIn(false);
+                }
+              }}
+            >
+              {isSigningIn ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                </svg>
+              )}
+              {isSigningIn ? "Signing in..." : "Continue with GitHub"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <motion.div
+        ref={containerRef}
+        className="hidden lg:flex flex-col h-screen relative overflow-hidden"
+        variants={containerVariants}
+        animate={viewMode}
+        initial={false}
+      >
         <AnimatePresence mode="wait">
-          {viewMode === 'normal' && (
-            <motion.div variants={headerVariants} initial="visible" animate="visible" exit="hidden" style={{ overflow: "hidden" }}><Header /></motion.div>
+          {viewMode === "normal" && (
+            <motion.div
+              variants={headerVariants}
+              initial="visible"
+              animate="visible"
+              exit="hidden"
+              style={{ overflow: "hidden" }}
+            >
+              <Header />
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -413,7 +697,12 @@ export default function Home() {
         />
         <ModeIndicator viewMode={viewMode} />
 
-        <motion.div className="flex-1 overflow-hidden relative" variants={contentVariants} animate={viewMode} initial={false}>
+        <motion.div
+          className="flex-1 overflow-hidden relative"
+          variants={contentVariants}
+          animate={viewMode}
+          initial={false}
+        >
           <div className="flex h-full gap-3">
             <motion.div
               className="flex-1 h-full bg-background overflow-hidden border shadow-xl"
@@ -421,12 +710,18 @@ export default function Home() {
               animate={viewMode}
               initial={false}
               style={{
-                marginRight: isPanelVisible && viewMode === 'normal' ? `${panelWidth}px` : 0,
-                boxShadow: viewMode === 'code' ? "none" : "0 15px 40px -5px rgba(0, 0, 0, 0.12), 0 8px 25px -5px rgba(0, 0, 0, 0.08)"
+                marginRight:
+                  isPanelVisible && viewMode === "normal"
+                    ? `${panelWidth}px`
+                    : 0,
+                boxShadow:
+                  viewMode === "code"
+                    ? "none"
+                    : "0 15px 40px -5px rgba(0, 0, 0, 0.12), 0 8px 25px -5px rgba(0, 0, 0, 0.08)",
               }}
               transition={{
                 marginRight: { duration: 0.5, ease: smoothEase },
-                boxShadow: { duration: 0.6, ease: smoothEase }
+                boxShadow: { duration: 0.6, ease: smoothEase },
               }}
             >
               <CodeEditor />
@@ -434,7 +729,7 @@ export default function Home() {
 
             {/* ## UPDATED: SidePanel with conditional initial animation ## */}
             <AnimatePresence>
-              {viewMode === 'normal' && (
+              {viewMode === "normal" && (
                 <motion.div
                   className="absolute right-0 top-0 h-full bg-background overflow-hidden z-20"
                   style={{ width: panelWidth }}
@@ -449,10 +744,15 @@ export default function Home() {
                     viewMode={viewMode}
                     onResize={handlePanelResize}
                     panelWidth={panelWidth}
-                    containerRef={containerRef as React.RefObject<HTMLDivElement>}
+                    containerRef={
+                      containerRef as React.RefObject<HTMLDivElement>
+                    }
                   />
                   <div className="h-full w-full py-5">
-                    <SidePanel isVisible={isPanelVisible} showPanel={showPanel} />
+                    <SidePanel
+                      isVisible={isPanelVisible}
+                      showPanel={showPanel}
+                    />
                   </div>
                 </motion.div>
               )}
@@ -461,17 +761,25 @@ export default function Home() {
         </motion.div>
 
         <AnimatePresence>
-          {viewMode === 'normal' && (
-            <motion.div initial={{ opacity: 1, y: 0 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} transition={{ duration: 0.3, ease: smoothEase }}>
+          {viewMode === "normal" && (
+            <motion.div
+              initial={{ opacity: 1, y: 0 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.3, ease: smoothEase }}
+            >
               <DSAChatbotTrigger />
             </motion.div>
           )}
         </AnimatePresence>
 
-        <PanelExpander isPanelVisible={isPanelVisible} viewMode={viewMode} isTransitioning={isTransitioning} showPanel={showPanel} />
+        <PanelExpander
+          isPanelVisible={isPanelVisible}
+          viewMode={viewMode}
+          isTransitioning={isTransitioning}
+          showPanel={showPanel}
+        />
       </motion.div>
     </Providers>
   );
 }
-
-

@@ -216,7 +216,7 @@ async function flattenContentsRecursively(
   path: string = "",
   items?: any[]
 ): Promise<any[]> {
-  let allItems: any[] = [];
+  const allItems: any[] = [];
 
   // If items not provided, fetch them
   if (!items) {
