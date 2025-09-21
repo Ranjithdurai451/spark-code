@@ -32,7 +32,7 @@ export type CreditTransaction = {
 
 export async function getOrCreateUserWithCredits(
   req: NextRequest,
-  initialCredits = 100,
+  initialCredits = 50,
 ): Promise<CreditsUser | null> {
   try {
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });

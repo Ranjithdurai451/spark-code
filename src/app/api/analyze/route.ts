@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createGeminiClient } from "@/lib/model";
+import { createStreamingGeminiModel } from "@/lib/model";
 import { requireCredits } from "@/lib/credits";
 import { streamText } from "ai";
 import { extractFunctionInfo } from "@/lib/extractor";
@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
       });
     }
     const { messages, code, language } = await req.json();
-    const gemini = createGeminiClient();
+    const gemini = await createStreamingGeminiModel();
 
     // Extract code from request
     let codeToAnalyze = code;
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
 
     // Stream the analysis
     const result = streamText({
-      model: gemini("gemini-2.0-flash"),
+      model: gemini,
       prompt: analysisPrompt,
       temperature: 0.1,
       maxTokens: 3000,

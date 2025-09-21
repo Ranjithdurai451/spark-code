@@ -106,6 +106,30 @@ CREATE TABLE credit_consumption (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- API key usage table - tracks API key usage and quotas
+CREATE TABLE api_key_usage (
+  id SERIAL PRIMARY KEY,
+  service VARCHAR(50) NOT NULL,
+  key_index INTEGER NOT NULL,
+  total_requests INTEGER DEFAULT 0,
+  failed_requests INTEGER DEFAULT 0,
+  last_used_at TIMESTAMP WITH TIME ZONE,
+  quota_exhausted BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(service, key_index)
+);
+
+-- Service config table - tracks current key indices and total keys per service
+CREATE TABLE service_config (
+  id SERIAL PRIMARY KEY,
+  service VARCHAR(50) UNIQUE NOT NULL,
+  current_key_index INTEGER DEFAULT 0,
+  total_keys INTEGER NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- =====================================================
 -- STEP 3: CREATE INDEXES FOR OPTIMAL PERFORMANCE
 -- =====================================================
@@ -125,6 +149,14 @@ CREATE INDEX idx_credit_consumption_user_id ON credit_consumption(user_id);
 CREATE INDEX idx_credit_consumption_created_at ON credit_consumption(created_at DESC);
 CREATE INDEX idx_credit_consumption_feature ON credit_consumption(feature_type);
 CREATE INDEX idx_credit_consumption_user_feature ON credit_consumption(user_id, feature_type);
+
+-- API key usage indexes
+CREATE INDEX idx_api_key_usage_service ON api_key_usage(service);
+CREATE INDEX idx_api_key_usage_key_index ON api_key_usage(service, key_index);
+CREATE INDEX idx_api_key_usage_last_used ON api_key_usage(last_used_at DESC);
+
+-- Service config indexes
+CREATE INDEX idx_service_config_service ON service_config(service);
 
 -- =====================================================
 -- STEP 4: CREATE FUNCTIONS WITH PROPER SECURITY
@@ -315,6 +347,40 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Function to increment key usage
+CREATE OR REPLACE FUNCTION increment_key_usage(
+  p_service VARCHAR(50),
+  p_key_index INTEGER
+)
+RETURNS VOID AS $$
+BEGIN
+  INSERT INTO api_key_usage (service, key_index, total_requests, last_used_at, updated_at)
+  VALUES (p_service, p_key_index, 1, NOW(), NOW())
+  ON CONFLICT (service, key_index)
+  DO UPDATE SET
+    total_requests = api_key_usage.total_requests + 1,
+    last_used_at = NOW(),
+    updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to record failed request
+CREATE OR REPLACE FUNCTION record_failed_request(
+  p_service VARCHAR(50),
+  p_key_index INTEGER
+)
+RETURNS VOID AS $$
+BEGIN
+  INSERT INTO api_key_usage (service, key_index, failed_requests, last_used_at, updated_at)
+  VALUES (p_service, p_key_index, 1, NOW(), NOW())
+  ON CONFLICT (service, key_index)
+  DO UPDATE SET
+    failed_requests = api_key_usage.failed_requests + 1,
+    last_used_at = NOW(),
+    updated_at = NOW();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- =====================================================
 -- STEP 5: ENABLE ROW LEVEL SECURITY
 -- =====================================================
@@ -323,6 +389,8 @@ ALTER TABLE plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_additions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_consumption ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_key_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE service_config ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================
 -- STEP 6: CREATE RLS POLICIES (SERVICE ROLE BYPASS)
@@ -356,6 +424,26 @@ CREATE POLICY "consumption_select_policy" ON credit_consumption
 CREATE POLICY "consumption_insert_policy" ON credit_consumption
   FOR INSERT WITH CHECK (true);
 
+-- API key usage policies - Service role bypasses all restrictions
+CREATE POLICY "api_key_usage_select_policy" ON api_key_usage
+  FOR SELECT USING (true);
+
+CREATE POLICY "api_key_usage_insert_policy" ON api_key_usage
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "api_key_usage_update_policy" ON api_key_usage
+  FOR UPDATE USING (true);
+
+-- Service config policies - Service role bypasses all restrictions
+CREATE POLICY "service_config_select_policy" ON service_config
+  FOR SELECT USING (true);
+
+CREATE POLICY "service_config_insert_policy" ON service_config
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "service_config_update_policy" ON service_config
+  FOR UPDATE USING (true);
+
 -- =====================================================
 -- STEP 7: GRANT PERMISSIONS
 -- =====================================================
@@ -367,11 +455,15 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE ON users TO anon, authenticated, service_role;
 GRANT SELECT, INSERT ON credit_additions TO anon, authenticated, service_role;
 GRANT SELECT, INSERT ON credit_consumption TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE ON api_key_usage TO anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE ON service_config TO anon, authenticated, service_role;
 
 -- Grant function execution
 GRANT EXECUTE ON FUNCTION consume_credits(TEXT, INTEGER, TEXT, TEXT) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION add_credits(TEXT, INTEGER, TEXT, TEXT, TEXT, TEXT) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION get_user_balance(TEXT) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION increment_key_usage(VARCHAR, INTEGER) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION record_failed_request(VARCHAR, INTEGER) TO anon, authenticated, service_role;
 
 -- Grant sequence permissions (for UUID generation)
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;

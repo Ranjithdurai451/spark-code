@@ -39,7 +39,6 @@ export default function ProfileDropdown() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   const {
     data: creditsData,
@@ -96,9 +95,7 @@ export default function ProfileDropdown() {
     router.push("/credits");
   };
 
-  const handleSettingsClick = () => {
-    setShowSettings(true);
-  };
+
 
   if (status === "loading") {
     return (
@@ -184,14 +181,8 @@ export default function ProfileDropdown() {
             Credits & Billing
           </DropdownMenuItem>
 
-          <DropdownMenuItem
-            onClick={handleSettingsClick}
-            className="cursor-pointer"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
-          </DropdownMenuItem>
 
+          <SettingsDialog />
           <DropdownMenuSeparator />
 
           <DropdownMenuItem
@@ -209,7 +200,7 @@ export default function ProfileDropdown() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* <SettingsDialog open={showSettings} onOpenChange={setShowSettings} /> */}
+
     </>
   );
 }

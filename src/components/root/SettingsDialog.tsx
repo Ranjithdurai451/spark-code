@@ -253,14 +253,15 @@ export default function SettingsDialog({
       {/* Settings Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button
-            variant="outline"
-            size="icon"
-            className="gap-2"
+          <div
+            role="menuitem"
+            tabIndex={0}
+            className="flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground gap-2"
             data-settings-trigger
           >
-            <Settings className="w-4 h-4" />
-          </Button>
+            <Settings className="w-4 h-4 mr-2" />
+            <span>Settings</span>
+          </div>
         </DialogTrigger>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>

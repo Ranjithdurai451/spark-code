@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
         {
           status: 400,
           headers: { "Content-Type": "application/json" },
-        },
+        }
       );
     }
 
@@ -184,7 +184,7 @@ ${currentTab.code}
     // Check if any message in the conversation contains code (for fallback/general context)
     const hasCodeInConversation = messages.some(
       (msg) =>
-        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content),
+        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content)
     );
 
     // Create specialized context based on request type
@@ -348,7 +348,7 @@ Please provide a detailed, helpful response that demonstrates expertise while be
       {
         status: 500,
         headers: { "Content-Type": "application/json" },
-      },
+      }
     );
   }
 }
