@@ -1,6 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getOrCreateUserWithCredits } from "@/lib/credits";
 import { supabaseAdmin } from "@/lib/supabase";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { logger } from "@/lib/logging/logger";
 
 interface CreateOrderRequest {
   planId: string;
@@ -9,14 +14,20 @@ interface CreateOrderRequest {
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  const startTime = Date.now();
+
+  logger.apiRequest(req.method, req.url, { requestId });
+
   try {
     // Validate environment variables
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      console.error("Razorpay environment variables not configured");
-      return NextResponse.json(
-        { error: "Payment system not configured" },
-        { status: 500 },
-      );
+      logger.error("Razorpay environment variables not configured", {
+        requestId,
+      });
+      throw APIError.create(ErrorCode.CONFIGURATION_ERROR, {
+        missingVars: ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET"],
+      });
     }
 
     const { planId }: CreateOrderRequest = await req.json();
@@ -24,7 +35,10 @@ export async function POST(req: NextRequest) {
     // Validate user
     const user = await getOrCreateUserWithCredits(req);
     if (!user) {
-      return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+      logger.warn("Unauthenticated user attempted to create order", {
+        requestId,
+      });
+      throw APIError.create(ErrorCode.UNAUTHENTICATED);
     }
 
     // Validate and get plan details from database
@@ -36,7 +50,8 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (planError || !plan) {
-      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+      logger.warn("Invalid plan requested", { requestId, planId, planError });
+      throw APIError.create(ErrorCode.RESOURCE_NOT_FOUND, { planId });
     }
 
     const amount = plan.price;
@@ -62,28 +77,43 @@ export async function POST(req: NextRequest) {
     });
 
     if (!razorpayResponse.ok) {
-      console.error(
-        "Razorpay order creation failed:",
-        await razorpayResponse.text(),
-      );
-      return NextResponse.json(
-        { error: "Failed to create payment order" },
-        { status: 500 },
-      );
+      const errorText = await razorpayResponse.text();
+      logger.error("Razorpay order creation failed", {
+        requestId,
+        status: razorpayResponse.status,
+        errorText,
+        userId: user.id,
+        planId,
+      });
+      throw APIError.create(ErrorCode.PAYMENT_ERROR, {
+        razorpayStatus: razorpayResponse.status,
+        razorpayError: errorText,
+      });
     }
 
     const orderData = await razorpayResponse.json();
 
-    return NextResponse.json({
-      id: orderData.id,
-      amount: orderData.amount,
-      currency: orderData.currency,
+    const processingTime = Date.now() - startTime;
+    logger.apiResponse(req.method, req.url, 200, processingTime, {
+      requestId,
+      userId: user.id,
+      planId,
+      orderId: orderData.id,
     });
-  } catch (error) {
-    console.error("Create order error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+
+    return createSuccessResponse(
+      {
+        id: orderData.id,
+        amount: orderData.amount,
+        currency: orderData.currency,
+      },
+      { requestId },
     );
+  } catch (error) {
+    const processingTime = Date.now() - startTime;
+    logger.error("Create order error", { requestId }, error as Error);
+    logger.apiResponse(req.method, req.url, 500, processingTime, { requestId });
+
+    return createErrorResponse(error, { requestId });
   }
 }

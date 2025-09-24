@@ -1,8 +1,13 @@
 import { executeGeminiWithRetry } from "@/lib/model";
 import { executeOnJudge0WithRetry } from "@/lib/judge0";
 import { generateText } from "ai";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { requireCredits } from "@/lib/credits";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 
 const LANGUAGE_MAP: Record<string, number> = {
   javascript: 63,
@@ -215,7 +220,7 @@ function analyzeJavaCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `Java function detected: ${methodName} with ${analysis.parameters.length} parameters`
+          `Java function detected: ${methodName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -252,7 +257,7 @@ function analyzePythonCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `Python function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `Python function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -300,7 +305,7 @@ function analyzeCppCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `C++ function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `C++ function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -334,7 +339,7 @@ function analyzeCCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `C function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `C function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -369,7 +374,7 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `Go function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `Go function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -382,7 +387,7 @@ function analyzeGoCode(code: string, analysis: CodeAnalysis): CodeAnalysis {
 // Enhanced JavaScript analysis
 function analyzeJavaScriptCode(
   code: string,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): CodeAnalysis {
   const cleanCode = removeCommentsAndStrings(code, "javascript");
 
@@ -423,7 +428,7 @@ function analyzeJavaScriptCode(
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `JavaScript function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `JavaScript function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -436,7 +441,7 @@ function analyzeJavaScriptCode(
 // Enhanced TypeScript analysis
 function analyzeTypeScriptCode(
   code: string,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): CodeAnalysis {
   const cleanCode = removeCommentsAndStrings(code, "typescript");
 
@@ -468,7 +473,7 @@ function analyzeTypeScriptCode(
 
         detectDataStructuresAndPattern(code, analysis);
         console.log(
-          `TypeScript function detected: ${functionName} with ${analysis.parameters.length} parameters`
+          `TypeScript function detected: ${functionName} with ${analysis.parameters.length} parameters`,
         );
         return analysis;
       }
@@ -676,7 +681,7 @@ function isExcludedMethod(name: string, language: string): boolean {
 // Enhanced data structure and algorithm pattern detection
 function detectDataStructuresAndPattern(
   code: string,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): void {
   const combined = code.toLowerCase();
 
@@ -802,7 +807,7 @@ function detectDataStructuresAndPattern(
   for (const { keywords, pattern } of patternMap) {
     if (
       keywords.some(
-        (keyword) => funcName.includes(keyword) || combined.includes(keyword)
+        (keyword) => funcName.includes(keyword) || combined.includes(keyword),
       )
     ) {
       analysis.algorithmPattern = pattern;
@@ -844,15 +849,15 @@ async function generateWrapperCode(
   userCode: string,
   language: string,
   testCase: any,
-  analysis: CodeAnalysis
+  analysis: CodeAnalysis,
 ): Promise<string> {
   console.log(
-    `Generating wrapper code for ${language} with pattern: ${analysis.algorithmPattern}`
+    `Generating wrapper code for ${language} with pattern: ${analysis.algorithmPattern}`,
   );
 
   const prompt = LEETCODE_WRAPPER_PROMPT.replace(
     /{function_name}/g,
-    analysis.functionName
+    analysis.functionName,
   )
     .replace(/{function_params}/g, analysis.parameters.join(", "))
     .replace(/{return_type}/g, analysis.returnType)
@@ -860,7 +865,7 @@ async function generateWrapperCode(
     .replace(/{algorithm_pattern}/g, analysis.algorithmPattern)
     .replace(
       /{data_structures}/g,
-      Array.from(analysis.dataStructures).join(", ")
+      Array.from(analysis.dataStructures).join(", "),
     )
     .replace(/{test_input}/g, JSON.stringify(testCase.input))
     .replace(/{expected_output}/g, JSON.stringify(testCase.output))
@@ -882,7 +887,7 @@ async function generateWrapperCode(
     // Ensure Main class name for Judge0
     extractedCode = extractedCode.replace(
       /public\s+class\s+\w+/g,
-      "public class Main"
+      "public class Main",
     );
   }
 
@@ -927,7 +932,7 @@ function extractCode(aiResponse: string, language: string): string {
 // Execute code on Judge0 with retry logic
 async function executeCode(
   { code, language }: { code: string; language: string },
-  retries = 2
+  retries = 2,
 ) {
   const langId = LANGUAGE_MAP[language.toLowerCase()];
   if (!langId) throw new Error("Unsupported language");
@@ -949,7 +954,7 @@ async function executeCode(
           (e?.message?.includes("429") || e?.message?.includes("5"))
         ) {
           await new Promise((resolve) =>
-            setTimeout(resolve, (attempt + 1) * 1000)
+            setTimeout(resolve, (attempt + 1) * 1000),
           );
           continue;
         }
@@ -960,7 +965,7 @@ async function executeCode(
 
       if (attempt < retries) {
         await new Promise((resolve) =>
-          setTimeout(resolve, (attempt + 1) * 1000)
+          setTimeout(resolve, (attempt + 1) * 1000),
         );
         continue;
       }
@@ -1113,9 +1118,21 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
+    logger.apiRequest("POST", req.url);
+
     const credit = await requireCredits(req, 3, "ai_execute");
     if (!credit.allowed) {
-      return NextResponse.json(credit.body, { status: credit.status });
+      logger.apiResponse(
+        "POST",
+        req.url,
+        credit.status || 402,
+        Date.now() - startTime,
+        { error: "insufficient_credits" },
+      );
+      return new Response(JSON.stringify(credit.body), {
+        status: credit.status || 402,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     console.log("Starting enhanced code execution request...");
 
@@ -1123,13 +1140,14 @@ export async function POST(req: NextRequest) {
 
     // Enhanced validation
     if (!LANGUAGE_MAP[language.toLowerCase()]) {
-      return NextResponse.json(
-        {
-          error: `Unsupported language: ${language}`,
-          supported: Object.keys(LANGUAGE_MAP),
-          message: `Language '${language}' is not supported. Use one of: ${Object.keys(LANGUAGE_MAP).join(", ")}`,
-        },
-        { status: 400 }
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "unsupported_language",
+        language,
+      });
+      throw APIError.create(
+        ErrorCode.UNSUPPORTED_LANGUAGE,
+        { language, supported: Object.keys(LANGUAGE_MAP) },
+        `Language '${language}' is not supported. Use one of: ${Object.keys(LANGUAGE_MAP).join(", ")}`,
       );
     }
 
@@ -1139,18 +1157,21 @@ export async function POST(req: NextRequest) {
       !Array.isArray(testCase.input) ||
       testCase.output === undefined
     ) {
-      return NextResponse.json(
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "invalid_request_format",
+      });
+      throw APIError.create(
+        ErrorCode.INVALID_REQUEST,
         {
-          error: "Invalid request format",
-          details:
-            "Required: code (string), testCase.input (array), testCase.output (any)",
+          required:
+            "code (string), testCase.input (array), testCase.output (any)",
           example: {
             code: "function twoSum(nums, target) { return [0, 1]; }",
             language: "javascript",
             testCase: { input: [[2, 7, 11, 15], 9], output: [0, 1] },
           },
         },
-        { status: 400 }
+        "Invalid request format: Required fields are missing or invalid",
       );
     }
 
@@ -1175,10 +1196,14 @@ export async function POST(req: NextRequest) {
         typescript: "Use: function functionName(params): returnType { }",
       };
 
-      return NextResponse.json(
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "no_function_found",
+        language,
+      });
+      throw APIError.create(
+        ErrorCode.INVALID_REQUEST,
         {
-          error: "NO_FUNCTION_FOUND",
-          message: `No testable function detected in ${language} code`,
+          language,
           hint:
             languageHints[
               language.toLowerCase() as keyof typeof languageHints
@@ -1186,7 +1211,7 @@ export async function POST(req: NextRequest) {
           codePreview:
             code.substring(0, 200) + (code.length > 200 ? "..." : ""),
         },
-        { status: 400 }
+        `No testable function detected in ${language} code`,
       );
     }
 
@@ -1206,7 +1231,7 @@ export async function POST(req: NextRequest) {
       code,
       language,
       testCase,
-      analysis
+      analysis,
     );
     console.log(`Generated wrapper code (${executableCode.length} chars)`);
 
@@ -1229,7 +1254,7 @@ export async function POST(req: NextRequest) {
     if (result.compile_output?.trim()) {
       error = formatError(
         `Compilation Error: ${result.compile_output}`,
-        language
+        language,
       );
       executionStatus = "compilation_error";
     } else if (result.stderr?.trim()) {
@@ -1256,62 +1281,67 @@ export async function POST(req: NextRequest) {
     });
 
     // Comprehensive response
-    return NextResponse.json({
-      // Core results
+    logger.apiResponse("POST", req.url, 200, processingTime, {
       passed,
-      actualOutput,
-      expectedOutput: testCase.output,
-      error,
-
-      // Execution details
-      language,
       executionStatus,
-      executionTime: result.time || 0,
-      memoryUsage: result.memory || 0,
-
-      // Code analysis
       functionTested: analysis.functionName,
-      functionParameters: analysis.parameters,
-      returnType: analysis.returnType,
-      algorithmPattern: analysis.algorithmPattern,
-      dataStructuresUsed: Array.from(analysis.dataStructures),
-      isStaticMethod: analysis.isStatic,
-      isAsyncMethod: analysis.isAsync,
+    });
 
-      // Performance metrics
-      performanceMetrics: {
-        processingTime,
+    return createSuccessResponse(
+      {
+        // Core results
+        passed,
+        actualOutput,
+        expectedOutput: testCase.output,
+        error,
+
+        // Execution details
+        language,
+        executionStatus,
         executionTime: result.time || 0,
         memoryUsage: result.memory || 0,
-        codeSize: code.length,
-        wrapperSize: executableCode.length,
-      },
 
-      // Full generated code for debugging
-      fullCode: executableCode,
+        // Code analysis
+        functionTested: analysis.functionName,
+        functionParameters: analysis.parameters,
+        returnType: analysis.returnType,
+        algorithmPattern: analysis.algorithmPattern,
+        dataStructuresUsed: Array.from(analysis.dataStructures),
+        isStaticMethod: analysis.isStatic,
+        isAsyncMethod: analysis.isAsync,
 
-      // Judge0 details
-      judge0Status: result.status?.description,
-      judge0StatusId: result.status?.id,
+        // Performance metrics
+        performanceMetrics: {
+          processingTime,
+          executionTime: result.time || 0,
+          memoryUsage: result.memory || 0,
+          codeSize: code.length,
+          wrapperSize: executableCode.length,
+        },
 
-      // Metadata
-      timestamp: new Date().toISOString(),
-      version: "3.0.0",
-    });
-  } catch (error: any) {
-    const processingTime = Date.now() - startTime;
-    console.error("System error occurred:", error);
+        // Full generated code for debugging
+        fullCode: executableCode,
 
-    return NextResponse.json(
-      {
-        error: `System Error: ${error.message}`,
-        details: error.stack?.substring(0, 500),
-        processingTime,
+        // Judge0 details
+        judge0Status: result.status?.description,
+        judge0StatusId: result.status?.id,
+
+        // Metadata
         timestamp: new Date().toISOString(),
-        retryable:
-          error.message.includes("429") || error.message.includes("50"),
+        version: "3.0.0",
       },
-      { status: 500 }
+      { processingTime },
     );
+  } catch (error) {
+    const processingTime = Date.now() - startTime;
+    logger.apiResponse(
+      "POST",
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      processingTime,
+      { error: error instanceof Error ? error.message : "Unknown error" },
+    );
+
+    return createErrorResponse(error, { processingTime });
   }
 }

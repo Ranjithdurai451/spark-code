@@ -1,7 +1,12 @@
 // app/api/execute/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { requireCredits } from "@/lib/credits";
 import { executeOnJudge0 } from "@/lib/judge0";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 
 const LANGUAGE_MAP: Record<string, number> = {
   python: 71,
@@ -17,29 +22,51 @@ const LANGUAGE_MAP: Record<string, number> = {
 // BYOK removed: keys are sourced from env via executeOnJudge0
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
+    logger.apiRequest("POST", req.url);
+
     const credit = await requireCredits(req, 2, "execute");
     if (!credit.allowed) {
-      return NextResponse.json(credit.body, { status: credit.status });
+      logger.apiResponse(
+        "POST",
+        req.url,
+        credit.status || 402,
+        Date.now() - startTime,
+        {
+          error: "insufficient_credits",
+        },
+      );
+      return new Response(JSON.stringify(credit.body), {
+        status: credit.status || 402,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const { code, language, input } = await req.json();
 
     // Validate inputs
     if (!code || !language) {
-      return NextResponse.json(
-        { error: "Code and language are required" },
-        { status: 400 },
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "missing_required_fields",
+      });
+      throw APIError.create(
+        ErrorCode.MISSING_REQUIRED_FIELD,
+        {},
+        "Code and language are required",
       );
     }
 
     const languageId = LANGUAGE_MAP[language.toLowerCase()];
     if (!languageId) {
-      return NextResponse.json(
-        {
-          error: `Unsupported language: ${language}`,
-          supportedLanguages: Object.keys(LANGUAGE_MAP),
-        },
-        { status: 400 },
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "unsupported_language",
+        language,
+      });
+      throw APIError.create(
+        ErrorCode.UNSUPPORTED_LANGUAGE,
+        { language, supported: Object.keys(LANGUAGE_MAP) },
+        `Unsupported language: ${language}`,
       );
     }
 
@@ -52,13 +79,26 @@ export async function POST(req: NextRequest) {
       input: input || "",
     });
 
-    return NextResponse.json(result);
+    logger.apiResponse("POST", req.url, 200, Date.now() - startTime, {
+      language,
+      hasOutput: !!result.output,
+    });
+
+    return createSuccessResponse(result, {
+      processingTime: Date.now() - startTime,
+    });
   } catch (error) {
-    console.error("Execution error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+    logger.apiResponse(
+      "POST",
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      Date.now() - startTime,
+      { error: error instanceof Error ? error.message : "Unknown error" },
     );
+
+    return createErrorResponse(error, {
+      processingTime: Date.now() - startTime,
+    });
   }
 }
 

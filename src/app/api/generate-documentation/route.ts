@@ -12,6 +12,10 @@ import {
   extractGoFunction,
   extractCSharpFunction,
 } from "@/lib/extractor";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 // BYOK removed: gemini client is created from env
 
 // Improved documentation generation prompt
@@ -141,7 +145,7 @@ function detectLanguage(code: string): string {
 function detectAlgorithmPattern(
   functionName: string,
   parameters: string[],
-  code: string
+  code: string,
 ): string {
   const name = functionName.toLowerCase();
   const codeStr = code.toLowerCase();
@@ -230,9 +234,23 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
+    logger.apiRequest("POST", req.url);
+
     const credit = await requireCredits(req, 1, "generate_docs");
     if (!credit.allowed) {
-      return Response.json(credit.body, { status: credit.status });
+      logger.apiResponse(
+        "POST",
+        req.url,
+        credit.status || 402,
+        Date.now() - startTime,
+        {
+          error: "insufficient_credits",
+        },
+      );
+      return new Response(JSON.stringify(credit.body), {
+        status: credit.status || 402,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const { messages, code, language } = await req.json();
     const gemini = createGeminiClient();
@@ -264,15 +282,15 @@ export async function POST(req: NextRequest) {
 
     // Validation
     if (!codeToDocument || codeToDocument.length < 20) {
-      return new Response(
-        JSON.stringify({
-          error: "INSUFFICIENT_CODE",
-          message:
-            "Please provide a substantial code snippet (at least 20 characters)",
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "insufficient_code",
+      });
+      throw APIError.create(
+        ErrorCode.INVALID_REQUEST,
+        {
           suggestion: "Include a complete function or method implementation",
-          retryable: true,
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        },
+        "Please provide a substantial code snippet (at least 20 characters)",
       );
     }
 
@@ -294,12 +312,12 @@ export async function POST(req: NextRequest) {
     // Build documentation prompt
     const documentationPrompt = CODE_DOCUMENTATION_PROMPT.replace(
       /\{user_code\}/g,
-      codeToDocument
+      codeToDocument,
     )
       .replace(/\{language\}/g, detectedLanguage)
       .replace(
         /\{function_signature\}/g,
-        functionInfo.signature || "Not detected"
+        functionInfo.signature || "Not detected",
       )
       .replace(/\{algorithm_pattern\}/g, functionInfo.algorithmPattern);
 
@@ -338,6 +356,13 @@ export async function POST(req: NextRequest) {
 
     console.log("Generated documentation length:", cleanedCode.length);
 
+    logger.apiResponse("POST", req.url, 200, Date.now() - startTime, {
+      function: functionInfo.name || "anonymous",
+      language: detectedLanguage,
+      pattern: functionInfo.algorithmPattern,
+      codeLength: cleanedCode.length,
+    });
+
     // Return plain text response
     return new Response(cleanedCode, {
       status: 200,
@@ -349,16 +374,17 @@ export async function POST(req: NextRequest) {
         "X-Processing-Time": (Date.now() - startTime).toString(),
       },
     });
-  } catch (error: any) {
-    console.error("💥 Documentation Error:", {
-      error: error.message,
-      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
-      processingTime: Date.now() - startTime,
-    });
+  } catch (error) {
+    logger.apiResponse(
+      "POST",
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      Date.now() - startTime,
+      { error: error instanceof Error ? error.message : "Unknown error" },
+    );
 
-    return new Response("Failed to generate documentation for the code", {
-      status: 500,
-      headers: { "Content-Type": "text/plain" },
+    return createErrorResponse(error, {
+      processingTime: Date.now() - startTime,
     });
   }
 }

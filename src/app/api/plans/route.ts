@@ -1,8 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 
+/**
+ * Get all active plans
+ * GET /api/plans
+ */
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
+    logger.apiRequest("GET", req.url);
+
     const { data: plans, error } = await supabaseAdmin
       .from("plans")
       .select("*")
@@ -10,19 +23,37 @@ export async function GET(req: NextRequest) {
       .order("price");
 
     if (error) {
-      console.error("Failed to fetch plans:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch plans" },
-        { status: 500 },
+      logger.error("Failed to fetch plans from database", {
+        error: error.message,
+        code: error.code,
+      });
+
+      throw APIError.create(
+        ErrorCode.DATABASE_ERROR,
+        { originalError: error.message },
+        "Failed to fetch plans",
       );
     }
 
-    return NextResponse.json({ plans });
-  } catch (error) {
-    console.error("Plans API error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+    logger.apiResponse("GET", req.url, 200, Date.now() - startTime, {
+      planCount: plans?.length || 0,
+    });
+
+    return createSuccessResponse(
+      { plans: plans || [] },
+      { processingTime: Date.now() - startTime },
     );
+  } catch (error) {
+    logger.apiResponse(
+      "GET",
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      Date.now() - startTime,
+      { error: error instanceof Error ? error.message : "Unknown error" },
+    );
+
+    return createErrorResponse(error, {
+      processingTime: Date.now() - startTime,
+    });
   }
 }

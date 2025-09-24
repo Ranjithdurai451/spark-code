@@ -5,14 +5,14 @@ import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import {
   useEditorStore,
   languages,
-  Language
+  Language,
 } from "@/components/features/editor/editorStore";
 
 import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -20,7 +20,7 @@ import {
   SelectValue,
   SelectContent,
   SelectItem,
-  SelectSeparator
+  SelectSeparator,
 } from "@/components/ui/select";
 import {
   DropdownMenu,
@@ -28,13 +28,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuLabel
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipProvider,
   TooltipTrigger,
-  TooltipContent
+  TooltipContent,
 } from "@/components/ui/tooltip";
 
 import GitHubFileBrowser from "./GithubFileBroswer";
@@ -62,7 +62,7 @@ import {
   ExternalLink,
   Loader2,
   RotateCcw,
-  Menu
+  Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,12 +74,13 @@ import { useCredentialsStore } from "@/components/root/credentialsStore";
 
 const fileErr = (name: string, lang: Language) => {
   if (!name.trim()) return "Filename cannot be empty";
-  if (name.includes("/") || name.includes("\\")) return "Filename cannot contain slashes";
+  if (name.includes("/") || name.includes("\\"))
+    return "Filename cannot contain slashes";
   if (name.length > 100) return "Filename too long";
   return null;
 };
 
-const cfg = (l: Language) => languages.find(x => x.name === l)!;
+const cfg = (l: Language) => languages.find((x) => x.name === l)!;
 const suggested = (l: Language) => cfg(l).filename;
 
 /* ─────────────────────────────────────────────────────────── */
@@ -95,10 +96,12 @@ function validateFileName(name: string, language: Language): string | null {
   if (/\s/.test(trimmed)) return "Filename cannot contain spaces";
 
   // Disallow illegal characters (Windows + common VCS-problematic)
-  if (/[<>:\"|?*#%{}~+`]/.test(trimmed)) return "Filename contains illegal characters";
+  if (/[<>:\"|?*#%{}~+`]/.test(trimmed))
+    return "Filename contains illegal characters";
 
   // Disallow control characters
-  if (/[\x00-\x1F\x7F]/.test(trimmed)) return "Filename contains control characters";
+  if (/[\x00-\x1F\x7F]/.test(trimmed))
+    return "Filename contains control characters";
 
   // Disallow leading dot and trailing dot/space
   if (/^\./.test(trimmed)) return "Filename cannot start with a dot";
@@ -107,9 +110,28 @@ function validateFileName(name: string, language: Language): string | null {
   // Reserved DOS device names
   const base = trimmed.replace(/\.[^.]+$/, "");
   const reserved = new Set([
-    "CON", "PRN", "AUX", "NUL",
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "COM1",
+    "COM2",
+    "COM3",
+    "COM4",
+    "COM5",
+    "COM6",
+    "COM7",
+    "COM8",
+    "COM9",
+    "LPT1",
+    "LPT2",
+    "LPT3",
+    "LPT4",
+    "LPT5",
+    "LPT6",
+    "LPT7",
+    "LPT8",
+    "LPT9",
   ]);
   if (reserved.has(base.toUpperCase())) return "Filename is a reserved name";
 
@@ -124,7 +146,9 @@ function validateFileName(name: string, language: Language): string | null {
   }
 
   // Extract base name (without extension)
-  const lastIndex = trimmed.toLowerCase().lastIndexOf(`.${expectedExtension.toLowerCase()}`);
+  const lastIndex = trimmed
+    .toLowerCase()
+    .lastIndexOf(`.${expectedExtension.toLowerCase()}`);
   const baseName = trimmed.slice(0, lastIndex);
   if (!baseName) return "Filename must have a name before the extension";
 
@@ -171,7 +195,7 @@ function ErrorCard({
   title,
   onRetry,
   onClear,
-  isRetrying = false
+  isRetrying = false,
 }: {
   error: string;
   title: string;
@@ -185,9 +209,7 @@ function ErrorCard({
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            <h4 className="font-medium text-sm text-red-500 mb-1">
-              {title}
-            </h4>
+            <h4 className="font-medium text-sm text-red-500 mb-1">{title}</h4>
             <p className="text-xs text-red-600 dark:text-red-400 mb-2 break-words">
               {error}
             </p>
@@ -242,15 +264,12 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     isFormatSupported,
   } = useEditorStore();
 
-  // GitHub credentials store 
-  const {
-    githubUser,
-    githubRepo,
-    isConnected,
-  } = useCredentialsStore();
+  // GitHub credentials store
+  const { githubUser, githubRepo, isConnected } = useCredentialsStore();
 
-  const { generateDocumentation, isGeneratingDocs } = useDocumentationGenerator();
-  const activeTab = tabs.find(t => t.id === activeTabId);
+  const { generateDocumentation, isGeneratingDocs } =
+    useDocumentationGenerator();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
 
   /* ------------------------- UI state --------------------- */
   const [showNew, setShowNew] = useState(false);
@@ -280,7 +299,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     data: foldersData,
     isLoading: loadingFolders,
     error: foldersError,
-    refetch: refetchFolders
+    refetch: refetchFolders,
   } = useQuery({
     queryKey: ["github-folders", githubRepo],
     queryFn: async () => {
@@ -293,12 +312,21 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ repo: githubRepo })
+        body: JSON.stringify({ repo: githubRepo }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        let errorMessage = errorData.error || "Failed to fetch folders";
+        let errorMessage = "Failed to fetch folders";
+
+        // Handle unified error response format
+        if (errorData.success === false && errorData.error) {
+          errorMessage =
+            errorData.error.message || errorData.error.code || errorMessage;
+        } else if (errorData.error) {
+          // Fallback for old format during transition
+          errorMessage = errorData.error;
+        }
 
         if (response.status === 401) {
           errorMessage = "Please sign in with GitHub again.";
@@ -311,7 +339,16 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         throw new Error(errorMessage);
       }
 
-      return response.json();
+      const data = await response.json();
+
+      // Handle unified success response format
+      if (data.success === true && data.data) {
+        return data.data;
+      } else if (data.success === false) {
+        throw new Error(data.error?.message || "API returned error");
+      }
+
+      return data;
     },
     enabled: !!(githubRepo && showSave && isConnected),
     staleTime: 5 * 60 * 1000,
@@ -323,7 +360,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
       )
         return false;
       return count < 2;
-    }
+    },
   });
 
   /*  flatten + normalize repo tree  */
@@ -343,13 +380,13 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     }
 
     const folders = Array.from(folderSet).sort();
-    return folders.map(fp => {
+    return folders.map((fp) => {
       const parts = fp.split("/");
       return {
         path: fp,
         name: parts[parts.length - 1],
         depth: parts.length - 1,
-        hasChildren: folders.some(f => f !== fp && f.startsWith(fp + "/"))
+        hasChildren: folders.some((f) => f !== fp && f.startsWith(fp + "/")),
       };
     });
   }, [foldersData]);
@@ -366,7 +403,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
 
   /* ----------------- save-to-GitHub mutation -------------- */
   const saveToGitHubMutation = useMutation({
-    mutationFn: async (data: {
+    mutationFn: async (saveData: {
       repo: string;
       path: string;
       content: string;
@@ -377,21 +414,38 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(saveData),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        // Handle unified error response format
+        let errorMessage = `HTTP ${response.status}`;
+        if (errorData.success === false && errorData.error) {
+          errorMessage =
+            errorData.error.message || errorData.error.code || errorMessage;
+        } else if (errorData.error) {
+          // Fallback for old format
+          errorMessage = errorData.error;
+        }
+        throw new Error(errorMessage);
       }
-      return response.json();
+
+      const responseData = await response.json();
+      // Handle unified success response format
+      if (responseData.success === true && responseData.data) {
+        return responseData.data;
+      } else if (responseData.success === false) {
+        throw new Error(responseData.error?.message || "API returned error");
+      }
+      return responseData;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
-        queryKey: ["github-folders", githubRepo]
+        queryKey: ["github-folders", githubRepo],
       });
       queryClient.invalidateQueries({
-        queryKey: ["github-tree", githubRepo]
+        queryKey: ["github-tree", githubRepo],
       });
 
       const ghUrl = `https://github.com/${githubUser?.login}/${githubRepo}/blob/main/${variables.path}`;
@@ -404,8 +458,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         resetSaveDialog();
       }, 3000);
     },
-    onError: (e: any) =>
-      toast.error(`Failed to save: ${e.message}`)
+    onError: (e: any) => toast.error(`Failed to save: ${e.message}`),
   });
 
   /* -------------- file-list handlers ---------------------- */
@@ -419,7 +472,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     addTab({
       name: trimmed,
       language: newLang,
-      code: cfg(newLang).defaultCode
+      code: cfg(newLang).defaultCode,
     });
     setShowNew(false);
     setNewName("");
@@ -428,7 +481,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
   };
 
   const rename = () => {
-    const t = tabs.find(t => t.id === target);
+    const t = tabs.find((t) => t.id === target);
     if (!t) return;
     const trimmed = newName.trim();
     const genericErr = fileErr(trimmed, t.language);
@@ -447,7 +500,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
     updateTab(target, {
       language: newLang,
       name: cfg(newLang).filename,
-      code: cfg(newLang).defaultCode
+      code: cfg(newLang).defaultCode,
     });
     setShowLang(false);
     toast.success("Language changed!");
@@ -506,7 +559,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
       content: activeTab.code,
       message: saveTopic
         ? `Add ${saveTopic} solution: ${fileName}`
-        : `Add solution: ${fileName}`
+        : `Add solution: ${fileName}`,
     });
   };
 
@@ -535,12 +588,11 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
         <div className="flex items-center h-12 px-4">
           {/* === LEFT: Enhanced File Tabs + Dropdown === */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
-
             {/* Horizontal Tab Pills (for quick switching) */}
             <div className="flex items-center gap-4 min-w-0 ">
               <div className="flex items-center gap-4 py-2">
                 {tabs
-                  .filter(tab => tab.id === activeTabId)
+                  .filter((tab) => tab.id === activeTabId)
                   .map((tab) => {
                     const isActive = tab.id === activeTabId;
                     return (
@@ -551,14 +603,16 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                           "group flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-0  whitespace-nowrap",
                           isActive
                             ? "bg-primary/10 text-primary border border-primary/20 shadow-sm"
-                            : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
                         )}
                       >
-                        <div className={cn(
-                          "w-2 h-2 rounded-full shrink-0",
-                          isActive ? "bg-primary" : "bg-muted-foreground/40"
-                        )} />
-                        <span >{tab.name}</span>
+                        <div
+                          className={cn(
+                            "w-2 h-2 rounded-full shrink-0",
+                            isActive ? "bg-primary" : "bg-muted-foreground/40",
+                          )}
+                        />
+                        <span>{tab.name}</span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <span
@@ -624,7 +678,10 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                   >
                     <Menu className="w-4 h-4" />
                     {tabs.length > 1 && (
-                      <Badge variant="secondary" className="ml-1 text-[10px] px-1">
+                      <Badge
+                        variant="secondary"
+                        className="ml-1 text-[10px] px-1"
+                      >
                         +{tabs.length - 1}
                       </Badge>
                     )}
@@ -669,13 +726,17 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                               "group flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition-all",
                               isActive
                                 ? "bg-primary/10 text-primary border border-primary/20"
-                                : "hover:bg-accent/50 text-foreground/80 hover:text-foreground"
+                                : "hover:bg-accent/50 text-foreground/80 hover:text-foreground",
                             )}
                           >
-                            <div className={cn(
-                              "w-2 h-2 rounded-full shrink-0",
-                              isActive ? "bg-primary" : "bg-muted-foreground/40"
-                            )} />
+                            <div
+                              className={cn(
+                                "w-2 h-2 rounded-full shrink-0",
+                                isActive
+                                  ? "bg-primary"
+                                  : "bg-muted-foreground/40",
+                              )}
+                            />
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
@@ -690,7 +751,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                                 </Badge>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                {tab.code.split('\n').length} lines
+                                {tab.code.split("\n").length} lines
                               </p>
                             </div>
 
@@ -849,7 +910,11 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={!activeTab?.code || activeTab.code.trim().length < 20 || isGeneratingDocs}
+                  disabled={
+                    !activeTab?.code ||
+                    activeTab.code.trim().length < 20 ||
+                    isGeneratingDocs
+                  }
                   onClick={generateDocumentation}
                   className="h-8 w-8 p-0"
                 >
@@ -908,7 +973,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
               <label className="text-sm font-medium">Language</label>
               <Select
                 value={newLang}
-                onValueChange={v => {
+                onValueChange={(v) => {
                   setNewLang(v as Language);
                   setNewName(suggested(v as Language));
                 }}
@@ -917,7 +982,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {languages.map(lang => (
+                  {languages.map((lang) => (
                     <SelectItem key={lang.name} value={lang.name}>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-primary/60" />
@@ -933,8 +998,8 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
               <label className="text-sm font-medium">Filename</label>
               <Input
                 value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && createFile()}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && createFile()}
                 placeholder="Enter filename..."
               />
               {err && (
@@ -975,8 +1040,8 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
               <label className="text-sm font-medium">New filename</label>
               <Input
                 value={newName}
-                onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && rename()}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && rename()}
                 placeholder="Enter new filename..."
               />
             </div>
@@ -1013,12 +1078,15 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
           <div className="flex flex-col gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Select language</label>
-              <Select value={newLang} onValueChange={v => setNewLang(v as Language)}>
+              <Select
+                value={newLang}
+                onValueChange={(v) => setNewLang(v as Language)}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {languages.map(lang => (
+                  {languages.map((lang) => (
                     <SelectItem key={lang.name} value={lang.name}>
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-primary/60" />
@@ -1035,7 +1103,8 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                 <div className="flex gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                   <p className="text-sm text-amber-800 dark:text-amber-200">
-                    Changing language will replace current code with the default template for the selected language.
+                    Changing language will replace current code with the default
+                    template for the selected language.
                   </p>
                 </div>
               </CardContent>
@@ -1079,7 +1148,10 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                     </p>
                   </div>
                 </div>
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300">
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300"
+                >
                   <Check className="h-3 w-3 mr-1" />
                   Connected
                 </Badge>
@@ -1093,7 +1165,9 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
               {loadingFolders ? (
                 <div className="h-10 flex items-center justify-center border rounded-md bg-muted/20">
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  <span className="text-sm text-muted-foreground">Loading folders...</span>
+                  <span className="text-sm text-muted-foreground">
+                    Loading folders...
+                  </span>
                 </div>
               ) : foldersError ? (
                 <ErrorCard
@@ -1104,8 +1178,8 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                 />
               ) : (
                 <Select
-                  value={isNewFolder ? "new-folder" : (saveTopic || "root")}
-                  onValueChange={v => {
+                  value={isNewFolder ? "new-folder" : saveTopic || "root"}
+                  onValueChange={(v) => {
                     if (v === "new-folder") {
                       setIsNewFolder(true);
                       setSaveTopic("");
@@ -1134,7 +1208,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                     {processedFolders.length > 0 && (
                       <>
                         <SelectSeparator />
-                        {processedFolders.map(f => (
+                        {processedFolders.map((f) => (
                           <SelectItem key={f.path} value={f.path}>
                             <div
                               style={{ marginLeft: f.depth * 16 }}
@@ -1159,7 +1233,9 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                     <SelectItem value="new-folder">
                       <div className="flex items-center gap-2">
                         <FolderPlus className="h-4 w-4 text-emerald-600" />
-                        <span className="text-emerald-600">Create new folder</span>
+                        <span className="text-emerald-600">
+                          Create new folder
+                        </span>
                       </div>
                     </SelectItem>
                   </SelectContent>
@@ -1173,7 +1249,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                 <label className="text-sm font-medium">New folder name</label>
                 <Input
                   value={customFolder}
-                  onChange={e => setCustom(e.target.value)}
+                  onChange={(e) => setCustom(e.target.value)}
                   placeholder="e.g., algorithms, data-structures"
                   className="h-10"
                 />
@@ -1185,7 +1261,7 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
               <label className="text-sm font-medium">Filename</label>
               <Input
                 value={saveName}
-                onChange={e => setSaveName(e.target.value)}
+                onChange={(e) => setSaveName(e.target.value)}
                 placeholder={activeTab?.name || "solution.java"}
                 className="h-10"
               />
@@ -1202,11 +1278,19 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
                   <code className="text-xs bg-background/80 px-2 py-1.5 rounded border break-all block">
                     {(() => {
                       if (isNewFolder) {
-                        return (customFolder || "new-folder") + "/" + (saveName || activeTab?.name || "filename");
+                        return (
+                          (customFolder || "new-folder") +
+                          "/" +
+                          (saveName || activeTab?.name || "filename")
+                        );
                       } else if (!saveTopic) {
                         return saveName || activeTab?.name || "filename";
                       } else {
-                        return saveTopic + "/" + (saveName || activeTab?.name || "filename");
+                        return (
+                          saveTopic +
+                          "/" +
+                          (saveName || activeTab?.name || "filename")
+                        );
                       }
                     })()}
                   </code>
@@ -1255,7 +1339,8 @@ export default function Tabs({ onFormatCode, isFormatting }: Props) {
               <div className="text-xs text-muted-foreground flex items-center gap-2">
                 <FileText className="h-3 w-3" />
                 <span>
-                  {(activeTab?.code.split("\n").length || 0)} lines • {(activeTab?.code.length || 0)} characters
+                  {activeTab?.code.split("\n").length || 0} lines •{" "}
+                  {activeTab?.code.length || 0} characters
                 </span>
               </div>
               <div className="flex gap-3">

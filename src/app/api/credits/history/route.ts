@@ -1,13 +1,26 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getOrCreateUserWithCredits } from "@/lib/credits";
 import { supabaseAdmin } from "@/lib/supabase";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { logger } from "@/lib/logging/logger";
 
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  const method = req.method;
+  const url = req.nextUrl.pathname;
+  let userId: string | undefined;
+
+  logger.apiRequest(method, url);
+
   try {
     const user = await getOrCreateUserWithCredits(req);
     if (!user) {
-      return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+      throw APIError.create(ErrorCode.UNAUTHENTICATED);
     }
+    userId = user.id;
 
     // Fetch additions and consumption separately
     const [additionsResult, consumptionResult] = await Promise.all([
@@ -15,9 +28,9 @@ export async function GET(req: NextRequest) {
         .from("credit_additions")
         .select(
           `
-          id, user_id, type, amount, description, razorpay_order_id, razorpay_payment_id,
-          metadata, created_at
-        `,
+           id, user_id, type, amount, description, razorpay_order_id, razorpay_payment_id,
+           metadata, created_at
+         `,
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
@@ -27,9 +40,9 @@ export async function GET(req: NextRequest) {
         .from("credit_consumption")
         .select(
           `
-          id, user_id, feature_type, amount, description,
-          metadata, created_at
-        `,
+           id, user_id, feature_type, amount, description,
+           metadata, created_at
+         `,
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
@@ -37,14 +50,15 @@ export async function GET(req: NextRequest) {
     ]);
 
     if (additionsResult.error || consumptionResult.error) {
-      console.error(
-        "Failed to fetch credit history:",
-        additionsResult.error || consumptionResult.error,
-      );
-      return NextResponse.json(
-        { error: "Failed to fetch history" },
-        { status: 500 },
-      );
+      logger.error("Failed to fetch credit history", {
+        userId,
+        additionsError: additionsResult.error,
+        consumptionError: consumptionResult.error,
+      });
+      throw APIError.create(ErrorCode.DATABASE_ERROR, {
+        additionsError: additionsResult.error,
+        consumptionError: consumptionResult.error,
+      });
     }
 
     // Combine and sort by created_at
@@ -64,12 +78,27 @@ export async function GET(req: NextRequest) {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
-    return NextResponse.json(combinedHistory.slice(0, 50));
+    const processingTime = Date.now() - startTime;
+    logger.apiResponse(method, url, 200, processingTime, { userId });
+    return createSuccessResponse(combinedHistory.slice(0, 50), {
+      processingTime,
+      userId,
+    });
   } catch (error) {
-    console.error("Credit history error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+    const processingTime = Date.now() - startTime;
+    const statusCode = error instanceof APIError ? error.statusCode : 500;
+    logger.error(
+      "Credit history error",
+      {
+        userId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      error instanceof Error ? error : undefined,
     );
+    logger.apiResponse(method, url, statusCode, processingTime, { userId });
+    return createErrorResponse(error, {
+      processingTime,
+      userId,
+    });
   }
 }

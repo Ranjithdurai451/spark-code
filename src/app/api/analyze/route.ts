@@ -3,6 +3,10 @@ import { createStreamingGeminiModel } from "@/lib/model";
 import { requireCredits } from "@/lib/credits";
 import { streamText } from "ai";
 import { extractFunctionInfo } from "@/lib/extractor";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 // BYOK removed: gemini client is created from env
 
 // Enhanced analysis prompt with better structure
@@ -163,10 +167,21 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
+    logger.apiRequest("POST", req.url);
+
     const credit = await requireCredits(req, 1, "analyze");
     if (!credit.allowed) {
+      logger.apiResponse(
+        "POST",
+        req.url,
+        credit.status || 402,
+        Date.now() - startTime,
+        {
+          error: "insufficient_credits",
+        },
+      );
       return new Response(JSON.stringify(credit.body), {
-        status: credit.status,
+        status: credit.status || 402,
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -192,15 +207,15 @@ export async function POST(req: NextRequest) {
 
     // Validation
     if (!codeToAnalyze || codeToAnalyze.length < 20) {
-      return new Response(
-        JSON.stringify({
-          error: "INSUFFICIENT_CODE",
-          message:
-            "Please provide a substantial code snippet (at least 20 characters)",
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "insufficient_code",
+      });
+      throw APIError.create(
+        ErrorCode.INVALID_REQUEST,
+        {
           suggestion: "Include a complete function or method implementation",
-          retryable: true,
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+        },
+        "Please provide a substantial code snippet (at least 20 characters)",
       );
     }
 
@@ -212,12 +227,13 @@ export async function POST(req: NextRequest) {
     const functionInfo = extractFunctionInfo(codeToAnalyze, detectedLanguage);
 
     if (!functionInfo.isValid) {
-      return new Response(
-        JSON.stringify({
-          error: "NO_VALID_FUNCTION",
-          message: `No complete function found in the ${detectedLanguage} code`,
-          suggestion:
-            "Please provide code with at least one complete function implementation",
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "no_valid_function",
+        language: detectedLanguage,
+      });
+      throw APIError.create(
+        ErrorCode.INVALID_REQUEST,
+        {
           detectedLanguage,
           supportedLanguages: [
             "java",
@@ -229,9 +245,10 @@ export async function POST(req: NextRequest) {
             "go",
             "csharp",
           ],
-          retryable: true,
-        }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
+          suggestion:
+            "Please provide code with at least one complete function implementation",
+        },
+        `No complete function found in the ${detectedLanguage} code`,
       );
     }
 
@@ -290,30 +307,26 @@ export async function POST(req: NextRequest) {
       (Date.now() - startTime).toString(),
     );
 
-    return response;
-  } catch (error: any) {
-    console.error("💥 Analysis Error:", {
-      error: error.message,
-      stack: process.env.NODE_ENV === "development" ? error.stack : undefined,
-      processingTime: Date.now() - startTime,
+    logger.apiResponse("POST", req.url, 200, Date.now() - startTime, {
+      function: functionInfo.name,
+      language: detectedLanguage,
+      pattern: functionInfo.algorithmPattern,
+      quality: `${quality.score}/10`,
     });
 
-    return new Response(
-      JSON.stringify({
-        error: "ANALYSIS_FAILED",
-        message: "Failed to analyze the code",
-        details:
-          process.env.NODE_ENV === "development"
-            ? error.message
-            : "Internal processing error",
-        timestamp: new Date().toISOString(),
-        retryable: true,
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
+    return response;
+  } catch (error) {
+    logger.apiResponse(
+      "POST",
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      Date.now() - startTime,
+      { error: error instanceof Error ? error.message : "Unknown error" },
     );
+
+    return createErrorResponse(error, {
+      processingTime: Date.now() - startTime,
+    });
   }
 }
 

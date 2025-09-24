@@ -69,7 +69,19 @@ async function fetchRepositories(): Promise<GitHubRepo[]> {
     throw new Error("Failed to fetch repositories");
   }
 
-  const repos = await response.json();
+  const responseData = await response.json();
+
+  // Handle unified API response format
+  let repos: GitHubRepo[] = [];
+  if (responseData.success === true && responseData.data) {
+    repos = responseData.data;
+  } else if (responseData.success === false) {
+    throw new Error(responseData.error?.message || "API returned error");
+  } else {
+    // Fallback for old format
+    repos = responseData;
+  }
+
   console.log(`✅ Received ${repos.length} repositories from API`);
   return repos;
 }

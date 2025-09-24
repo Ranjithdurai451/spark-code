@@ -1,7 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getOrCreateUserWithCredits } from "@/lib/credits";
 import { supabaseAdmin } from "@/lib/supabase";
 import crypto from "crypto";
+import { APIError, createErrorResponse } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { logger } from "@/lib/logging/logger";
 
 interface VerifyPaymentRequest {
   razorpay_order_id: string;
@@ -11,14 +15,20 @@ interface VerifyPaymentRequest {
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
+    logger.apiRequest(req.method, req.url);
+
     // Validate environment variables
     if (!process.env.RAZORPAY_KEY_SECRET) {
-      console.error("Razorpay environment variables not configured");
-      return NextResponse.json(
-        { error: "Payment system not configured" },
-        { status: 500 },
-      );
+      logger.error("Razorpay environment variables not configured", {
+        url: req.url,
+        method: req.method,
+      });
+      throw APIError.create(ErrorCode.CONFIGURATION_ERROR, {
+        missingEnvVar: "RAZORPAY_KEY_SECRET",
+      });
     }
 
     const {
@@ -31,7 +41,7 @@ export async function POST(req: NextRequest) {
     // Validate user
     const user = await getOrCreateUserWithCredits(req);
     if (!user) {
-      return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
+      throw APIError.create(ErrorCode.UNAUTHENTICATED);
     }
 
     // Check for duplicate payment processing
@@ -42,10 +52,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (existingPayment) {
-      return NextResponse.json(
-        { error: "Payment already processed" },
-        { status: 400 },
-      );
+      throw APIError.create(ErrorCode.RESOURCE_ALREADY_EXISTS, {
+        razorpay_payment_id,
+        message: "Payment already processed",
+      });
     }
 
     // Verify payment signature
@@ -56,10 +66,16 @@ export async function POST(req: NextRequest) {
       .digest("hex");
 
     if (razorpay_signature !== expectedSign) {
-      return NextResponse.json(
-        { error: "Payment verification failed" },
-        { status: 400 },
-      );
+      logger.warn("Payment signature verification failed", {
+        userId: user.id,
+        razorpay_order_id,
+        razorpay_payment_id,
+      });
+      throw APIError.create(ErrorCode.PAYMENT_ERROR, {
+        razorpay_order_id,
+        razorpay_payment_id,
+        message: "Payment verification failed",
+      });
     }
 
     // Get plan details from database
@@ -71,7 +87,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (planError || !plan) {
-      return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+      throw APIError.create(ErrorCode.INVALID_VALUE, {
+        planId,
+        message: "Invalid plan",
+      });
     }
 
     // Add credits using the database function
@@ -88,11 +107,18 @@ export async function POST(req: NextRequest) {
     );
 
     if (addError) {
-      console.error("Failed to add credits:", addError);
-      return NextResponse.json(
-        { error: "Failed to add credits" },
-        { status: 500 },
-      );
+      logger.error("Failed to add credits via database function", {
+        userId: user.id,
+        razorpay_order_id,
+        razorpay_payment_id,
+        error: addError,
+      });
+      throw APIError.create(ErrorCode.OPERATION_FAILED, {
+        razorpay_order_id,
+        razorpay_payment_id,
+        dbError: addError,
+        message: "Failed to add credits",
+      });
     }
 
     // Parse the result
@@ -100,19 +126,41 @@ export async function POST(req: NextRequest) {
       typeof addResult === "string" ? JSON.parse(addResult) : addResult;
 
     if (!resultData.success) {
-      console.error("Add credits failed:", resultData.error);
-      return NextResponse.json(
-        { error: "Failed to add credits" },
-        { status: 500 },
-      );
+      logger.error("Add credits function returned failure", {
+        userId: user.id,
+        razorpay_order_id,
+        razorpay_payment_id,
+        resultData,
+      });
+      throw APIError.create(ErrorCode.OPERATION_FAILED, {
+        razorpay_order_id,
+        razorpay_payment_id,
+        resultData,
+        message: "Failed to add credits",
+      });
     }
 
-    return NextResponse.json({ success: true, credits: plan.credits });
+    logger.apiResponse(req.method, req.url, 200, Date.now() - startTime, {
+      userId: user.id,
+      creditsAdded: plan.credits,
+      planId,
+    });
+
+    return createSuccessResponse({
+      credits: plan.credits,
+      plan: plan.name,
+    });
   } catch (error) {
-    console.error("Payment verification error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+    logger.apiResponse(
+      req.method,
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      Date.now() - startTime,
+      {
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
     );
+
+    return createErrorResponse(error);
   }
 }

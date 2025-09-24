@@ -1,14 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getOrCreateUserWithCredits } from "@/lib/credits";
+import { NextRequest } from "next/server";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { withAuth } from "@/lib/middleware/auth";
+import { logger } from "@/lib/logging/logger";
 
-export async function GET(req: NextRequest) {
-  const user = await getOrCreateUserWithCredits(req);
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
-  }
+/**
+ * Get current user's credit information
+ * GET /api/credits
+ */
+export const GET = withAuth(async (user, req) => {
+  const startTime = Date.now();
 
-  return NextResponse.json({
-    user: {
+  try {
+    logger.apiRequest("GET", req.url, { userId: user.id });
+
+    // Return user credit information
+    const userData = {
       id: user.id,
       login: user.login,
       email: user.email,
@@ -19,6 +26,25 @@ export async function GET(req: NextRequest) {
       total_credits_spent: user.total_credits_spent,
       created_at: user.created_at,
       last_login_at: user.last_login_at,
-    },
-  });
-}
+    };
+
+    logger.apiResponse("GET", req.url, 200, Date.now() - startTime, {
+      userId: user.id,
+      credits: user.credits,
+    });
+
+    return createSuccessResponse(
+      { user: userData },
+      { processingTime: Date.now() - startTime },
+    );
+  } catch (error) {
+    logger.apiResponse("GET", req.url, 500, Date.now() - startTime, {
+      userId: user.id,
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+
+    return createErrorResponse(error, {
+      processingTime: Date.now() - startTime,
+    });
+  }
+});

@@ -84,10 +84,32 @@ interface CreditPlan {
 async function fetchPlans(): Promise<CreditPlan[]> {
   const response = await fetch("/api/plans");
   if (!response.ok) {
-    throw new Error("Failed to fetch plans");
+    const errorData = await response.json();
+    let errorMessage = "Failed to fetch plans";
+
+    // Handle unified error response format
+    if (errorData.success === false && errorData.error) {
+      errorMessage =
+        errorData.error.message || errorData.error.code || errorMessage;
+    } else if (errorData.error) {
+      // Fallback for old format during transition
+      errorMessage = errorData.error;
+    }
+
+    throw new Error(errorMessage);
   }
+
   const data = await response.json();
-  return data.plans.map((plan: any) => ({
+
+  // Handle unified success response format
+  let plansData = data;
+  if (data.success === true && data.data) {
+    plansData = data.data;
+  } else if (data.success === false) {
+    throw new Error(data.error?.message || "API returned error");
+  }
+
+  return plansData.plans.map((plan: any) => ({
     ...plan,
     icon: plan.popular ? (
       <Crown className="w-5 h-5" />
@@ -101,17 +123,62 @@ async function fetchPlans(): Promise<CreditPlan[]> {
 async function fetchCredits(): Promise<{ user: UserCredits }> {
   const response = await fetch("/api/credits");
   if (!response.ok) {
-    throw new Error("Failed to fetch credits");
+    const errorData = await response.json();
+    let errorMessage = "Failed to fetch credits";
+
+    // Handle unified error response format
+    if (errorData.success === false && errorData.error) {
+      errorMessage =
+        errorData.error.message || errorData.error.code || errorMessage;
+    } else if (errorData.error) {
+      // Fallback for old format during transition
+      errorMessage = errorData.error;
+    }
+
+    throw new Error(errorMessage);
   }
-  return response.json();
+
+  const data = await response.json();
+
+  // Handle unified success response format
+  if (data.success === true && data.data) {
+    return data.data;
+  } else if (data.success === false) {
+    throw new Error(data.error?.message || "API returned error");
+  }
+
+  return data;
 }
 
 async function fetchCreditHistory(): Promise<CreditTransaction[]> {
   const response = await fetch("/api/credits/history");
   if (!response.ok) {
-    throw new Error("Failed to fetch credit history");
+    const errorData = await response.json();
+    let errorMessage = "Failed to fetch credit history";
+
+    // Handle unified error response format
+    if (errorData.success === false && errorData.error) {
+      errorMessage =
+        errorData.error.message || errorData.error.code || errorMessage;
+    } else if (errorData.error) {
+      // Fallback for old format during transition
+      errorMessage = errorData.error;
+    }
+
+    throw new Error(errorMessage);
   }
-  return response.json();
+
+  const data = await response.json();
+
+  // Handle unified success response format
+  if (data.success === true && data.data) {
+    return data.data;
+  } else if (data.success === false) {
+    throw new Error(data.error?.message || "API returned error");
+  }
+
+  // Fallback for old format during transition
+  return data;
 }
 
 // Razorpay types
@@ -269,10 +336,49 @@ export default function CreditsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create payment order");
+        const errorData = await response.json();
+        let errorMessage = "Failed to create payment order";
+
+        // Handle new unified error response format
+        if (errorData.success === false && errorData.error) {
+          errorMessage =
+            errorData.error.message || errorData.error.code || errorMessage;
+        } else if (errorData.error) {
+          // Fallback for old format during transition
+          errorMessage = errorData.error;
+        }
+
+        // Provide user-friendly messages for common errors
+        if (
+          response.status === 401 ||
+          errorData.error?.code === "UNAUTHENTICATED"
+        ) {
+          errorMessage = "Please sign in to make a purchase.";
+        } else if (
+          response.status === 400 ||
+          errorData.error?.code === "INVALID_VALUE"
+        ) {
+          errorMessage = "Invalid plan selected. Please try again.";
+        } else if (
+          response.status === 500 ||
+          errorData.error?.code === "CONFIGURATION_ERROR"
+        ) {
+          errorMessage =
+            "Payment system is currently unavailable. Please try again later.";
+        }
+
+        throw new Error(errorMessage);
       }
 
-      const orderData = await response.json();
+      const responseData = await response.json();
+
+      // Handle unified success response format
+      let orderData = responseData;
+      if (responseData.success === true && responseData.data) {
+        orderData = responseData.data;
+      } else if (responseData.success === false) {
+        throw new Error(responseData.error?.message || "API returned error");
+      }
 
       // Load Razorpay script
       if (!window.Razorpay) {
@@ -308,12 +414,55 @@ export default function CreditsPage() {
           });
 
           if (verifyResponse.ok) {
-            refetchCredits();
-            toast.success(
-              `Payment successful! ${plan.credits} credits added to your account.`,
-            );
+            const verifyData = await verifyResponse.json();
+
+            // Handle unified success response format
+            if (verifyData.success === true) {
+              refetchCredits();
+              toast.success(
+                `Payment successful! ${plan.credits} credits added to your account.`,
+              );
+            } else {
+              // Handle unified error response format
+              let errorMessage =
+                "Payment verification failed. Please contact support.";
+              if (verifyData.success === false && verifyData.error) {
+                errorMessage =
+                  verifyData.error.message ||
+                  verifyData.error.code ||
+                  errorMessage;
+              }
+              toast.error(errorMessage);
+            }
           } else {
-            toast.error("Payment verification failed. Please contact support.");
+            const errorData = await verifyResponse.json();
+            let errorMessage =
+              "Payment verification failed. Please contact support.";
+
+            // Handle unified error response format
+            if (errorData.success === false && errorData.error) {
+              errorMessage =
+                errorData.error.message || errorData.error.code || errorMessage;
+            } else if (errorData.error) {
+              // Fallback for old format during transition
+              errorMessage = errorData.error;
+            }
+
+            // Provide user-friendly messages for common errors
+            if (
+              verifyResponse.status === 400 ||
+              errorData.error?.code === "PAYMENT_ERROR"
+            ) {
+              errorMessage =
+                "Payment verification failed. Please check your payment details.";
+            } else if (
+              verifyResponse.status === 409 ||
+              errorData.error?.code === "RESOURCE_ALREADY_EXISTS"
+            ) {
+              errorMessage = "This payment has already been processed.";
+            }
+
+            toast.error(errorMessage);
           }
         },
         prefill: {

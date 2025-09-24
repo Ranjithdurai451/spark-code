@@ -3,6 +3,10 @@ import { NextRequest } from "next/server";
 import { createGeminiClient } from "@/lib/model";
 import { requireCredits } from "@/lib/credits";
 import { streamText } from "ai";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 // BYOK removed: gemini client is created from env
 
 const dsaChatbotPrompt = `
@@ -100,21 +104,38 @@ Remember: Every interaction should leave the user feeling more confident and kno
 `;
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
+    logger.apiRequest("POST", req.url);
+
     const credit = await requireCredits(req, 1, "chatbot");
     if (!credit.allowed) {
-      return Response.json(credit.body, { status: credit.status });
+      logger.apiResponse(
+        "POST",
+        req.url,
+        credit.status || 402,
+        Date.now() - startTime,
+        {
+          error: "insufficient_credits",
+        },
+      );
+      return new Response(JSON.stringify(credit.body), {
+        status: credit.status || 402,
+        headers: { "Content-Type": "application/json" },
+      });
     }
     const { messages, currentTab } = await req.json();
     const gemini = createGeminiClient();
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(
-        JSON.stringify({ error: "Messages array is required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
+      logger.apiResponse("POST", req.url, 400, Date.now() - startTime, {
+        error: "messages_required",
+      });
+      throw APIError.create(
+        ErrorCode.INVALID_REQUEST,
+        {},
+        "Messages array is required",
       );
     }
 
@@ -184,7 +205,7 @@ ${currentTab.code}
     // Check if any message in the conversation contains code (for fallback/general context)
     const hasCodeInConversation = messages.some(
       (msg) =>
-        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content)
+        typeof msg.content === "string" && /```[\s\S]*?```/.test(msg.content),
     );
 
     // Create specialized context based on request type
@@ -329,26 +350,23 @@ Please provide a detailed, helpful response that demonstrates expertise while be
       prompt: fullPrompt,
     });
 
+    logger.apiResponse("POST", req.url, 200, Date.now() - startTime, {
+      messageCount: messages.length,
+      hasCodeContext: !!codeContext,
+    });
+
     return result.toDataStreamResponse();
-  } catch (error: any) {
-    console.error("DSA Chatbot API Error:", error);
-
-    const errorMessage = error.message || "Failed to process your question";
-    const errorDetails = error.code
-      ? `Error Code: ${error.code}`
-      : "Please try again";
-
-    return new Response(
-      JSON.stringify({
-        error: errorMessage,
-        details: errorDetails,
-        suggestion:
-          "Try asking a more specific question about your algorithm or code",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+  } catch (error) {
+    logger.apiResponse(
+      "POST",
+      req.url,
+      error instanceof APIError ? error.statusCode : 500,
+      Date.now() - startTime,
+      { error: error instanceof Error ? error.message : "Unknown error" },
     );
+
+    return createErrorResponse(error, {
+      processingTime: Date.now() - startTime,
+    });
   }
 }

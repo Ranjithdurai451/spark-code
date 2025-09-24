@@ -1,5 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { APIError } from "@/lib/errors/errorHandler";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import { logger } from "@/lib/logging/logger";
 
 type RequestBody = {
   repo: string; // e.g. "dsa-solutions"
@@ -27,8 +32,11 @@ type GitHubRepo = {
 };
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  logger.apiRequest(req.method, req.url);
+
   try {
-    console.log("working");
+    logger.info("Starting GitHub save operation");
     // Get NextAuth session token instead of Authorization header
     const token = await getToken({
       req,
@@ -36,12 +44,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (!token?.accessToken) {
-      return NextResponse.json(
-        {
-          error: "Authentication required. Please sign in with GitHub.",
-        },
-        { status: 401 }
-      );
+      throw APIError.create(ErrorCode.UNAUTHENTICATED, {
+        message: "Authentication required. Please sign in with GitHub.",
+      });
     }
 
     const githubToken = token.accessToken as string;
@@ -51,60 +56,47 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json(
-        {
-          error: "Invalid JSON in request body",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.INVALID_REQUEST, {
+        message: "Invalid JSON in request body",
+      });
     }
 
     const { repo, path, content, message } = body;
 
     if (!repo?.trim()) {
-      return NextResponse.json(
-        {
-          error: "Repository name is required",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.MISSING_REQUIRED_FIELD, {
+        field: "repo",
+        message: "Repository name is required",
+      });
     }
 
     if (!path?.trim()) {
-      return NextResponse.json(
-        {
-          error: "File path is required",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.MISSING_REQUIRED_FIELD, {
+        field: "path",
+        message: "File path is required",
+      });
     }
 
     if (!content) {
-      return NextResponse.json(
-        {
-          error: "File content is required",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.MISSING_REQUIRED_FIELD, {
+        field: "content",
+        message: "File content is required",
+      });
     }
 
     if (!message?.trim()) {
-      return NextResponse.json(
-        {
-          error: "Commit message is required",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.MISSING_REQUIRED_FIELD, {
+        field: "message",
+        message: "Commit message is required",
+      });
     }
 
     // Validate path format
     if (path.includes("..") || path.startsWith("/") || path.endsWith("/")) {
-      return NextResponse.json(
-        {
-          error: "Invalid file path format",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.INVALID_FORMAT, {
+        field: "path",
+        message: "Invalid file path format",
+      });
     }
 
     // Step 1: Verify token and get user info
@@ -119,27 +111,22 @@ export async function POST(req: NextRequest) {
 
     if (!userResponse.ok) {
       const errorText = await userResponse.text();
-      console.error(
-        "GitHub user fetch failed:",
-        userResponse.status,
-        errorText
-      );
+      logger.externalAPI("GitHub", "user", false, {
+        status: userResponse.status,
+        error: errorText,
+      });
 
       if (userResponse.status === 401) {
-        return NextResponse.json(
-          {
-            error: "GitHub session expired. Please sign in again.",
-          },
-          { status: 401 }
-        );
+        throw APIError.create(ErrorCode.UNAUTHENTICATED, {
+          message: "GitHub session expired. Please sign in again.",
+        });
       }
 
-      return NextResponse.json(
-        {
-          error: "Failed to verify GitHub authentication",
-        },
-        { status: 401 }
-      );
+      throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+        message: "Failed to verify GitHub authentication",
+        status: userResponse.status,
+        error: errorText,
+      });
     }
 
     const user: GitHubUser = await userResponse.json();
@@ -168,27 +155,26 @@ export async function POST(req: NextRequest) {
         !repositoryData?.permissions?.push &&
         !repositoryData?.permissions?.admin
       ) {
-        return NextResponse.json(
-          {
-            error: "Insufficient permissions to push to this repository",
-          },
-          { status: 403 }
-        );
+        throw APIError.create(ErrorCode.UNAUTHORIZED, {
+          message: "Insufficient permissions to push to this repository",
+        });
       }
     } else if (repoResponse.status === 404) {
       // Repository doesn't exist - we'll create it
       repoExists = false;
     } else {
       const errorData = await repoResponse.text();
-      console.error("Repository check failed:", repoResponse.status, errorData);
+      logger.externalAPI("GitHub", "repo_check", false, {
+        status: repoResponse.status,
+        error: errorData,
+      });
 
-      return NextResponse.json(
-        {
-          error:
-            "Unable to access repository. Check permissions and repository name.",
-        },
-        { status: 403 }
-      );
+      throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+        message:
+          "Unable to access repository. Check permissions and repository name.",
+        status: repoResponse.status,
+        error: errorData,
+      });
     }
 
     // Step 3: Create repository if it doesn't exist
@@ -211,23 +197,21 @@ export async function POST(req: NextRequest) {
             auto_init: true,
             private: false,
           }),
-        }
+        },
       );
 
       if (!createRepoResponse.ok) {
         const createError = await createRepoResponse.text();
-        console.error(
-          "Repository creation failed:",
-          createRepoResponse.status,
-          createError
-        );
+        logger.externalAPI("GitHub", "create_repo", false, {
+          status: createRepoResponse.status,
+          error: createError,
+        });
 
-        return NextResponse.json(
-          {
-            error: `Failed to create repository: ${createError}`,
-          },
-          { status: 500 }
-        );
+        throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+          message: `Failed to create repository: ${createError}`,
+          status: createRepoResponse.status,
+          error: createError,
+        });
       }
 
       // Wait a moment for repository to be fully created
@@ -254,7 +238,12 @@ export async function POST(req: NextRequest) {
 
     // Step 5: Create or update the file
     const fileOperationUrl = `${repoApiUrl}/contents/${encodeURIComponent(path)}`;
-    const filePayload = {
+    const filePayload: {
+      message: string;
+      content: string;
+      branch: string;
+      sha?: string;
+    } = {
       message: message.trim(),
       content: Buffer.from(content, "utf8").toString("base64"),
       branch: "main",
@@ -262,7 +251,7 @@ export async function POST(req: NextRequest) {
 
     // Add SHA if updating existing file
     if (existingFileSha) {
-      (filePayload as any).sha = existingFileSha;
+      filePayload.sha = existingFileSha;
     }
 
     const fileOperationResponse = await fetch(fileOperationUrl, {
@@ -279,37 +268,38 @@ export async function POST(req: NextRequest) {
 
     if (!fileOperationResponse.ok) {
       const operationError = await fileOperationResponse.text();
-      console.error(
-        "File operation failed:",
-        fileOperationResponse.status,
-        operationError
-      );
+      logger.externalAPI("GitHub", "file_operation", false, {
+        status: fileOperationResponse.status,
+        error: operationError,
+      });
 
       // Try to parse error message from GitHub
       try {
         const errorJson = JSON.parse(operationError);
-        return NextResponse.json(
-          {
-            error: errorJson.message || "Failed to save file to GitHub",
-          },
-          { status: 500 }
-        );
-      } catch {
-        return NextResponse.json(
-          {
-            error:
-              "Failed to save file to GitHub. Please check your permissions.",
-          },
-          { status: 500 }
-        );
+        throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+          message: errorJson.message || "Failed to save file to GitHub",
+          status: fileOperationResponse.status,
+          error: operationError,
+        });
+      } catch (parseError) {
+        if (parseError instanceof APIError) {
+          throw parseError;
+        }
+        throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+          message:
+            "Failed to save file to GitHub. Please check your permissions.",
+          status: fileOperationResponse.status,
+          error: operationError,
+        });
       }
     }
 
     const result = await fileOperationResponse.json();
 
+    logger.externalAPI("GitHub", "file_operation", true);
+
     // Return success response with file details
-    return NextResponse.json({
-      success: true,
+    const response = createSuccessResponse({
       file: {
         path: path,
         url: result.content?.html_url,
@@ -320,14 +310,30 @@ export async function POST(req: NextRequest) {
         url: `https://github.com/${repoFullName}`,
       },
     });
-  } catch (error: any) {
-    console.error("GitHub API error:", error);
 
-    return NextResponse.json(
-      {
-        error: error.message || "Internal server error",
-      },
-      { status: 500 }
+    logger.apiResponse(req.method, req.url, 200, Date.now() - startTime);
+    return response;
+  } catch (error: unknown) {
+    logger.error(
+      "GitHub save operation failed",
+      undefined,
+      error instanceof Error ? error : new Error(String(error)),
     );
+
+    const apiError =
+      error instanceof APIError
+        ? error
+        : APIError.create(ErrorCode.INTERNAL_ERROR, {
+            originalError:
+              error instanceof Error ? error.message : String(error),
+          });
+
+    logger.apiResponse(
+      req.method,
+      req.url,
+      apiError.statusCode,
+      Date.now() - startTime,
+    );
+    return createErrorResponse(apiError);
   }
 }

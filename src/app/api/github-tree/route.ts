@@ -1,7 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { APIError } from "@/lib/errors/errorHandler";
+import { createSuccessResponse } from "@/lib/responses/apiResponse";
+import { createErrorResponse } from "@/lib/responses/errorResponse";
+import { logger } from "@/lib/logging/logger";
+import { ErrorCode } from "@/lib/errors/errorCodes";
+import type { GitHubTreeItem } from "@/types/api";
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  logger.apiRequest("POST", "/api/github-tree");
+
   try {
     // Get NextAuth session token instead of Authorization header
     const token = await getToken({
@@ -10,12 +19,9 @@ export async function POST(req: NextRequest) {
     });
 
     if (!token?.accessToken) {
-      return NextResponse.json(
-        {
-          error: "Authentication required. Please sign in with GitHub.",
-        },
-        { status: 401 }
-      );
+      throw APIError.create(ErrorCode.UNAUTHENTICATED, {
+        message: "Authentication required. Please sign in with GitHub.",
+      });
     }
 
     const githubToken = token.accessToken as string;
@@ -23,15 +29,13 @@ export async function POST(req: NextRequest) {
     const { repo }: { repo: string } = await req.json();
 
     if (!repo?.trim()) {
-      return NextResponse.json(
-        {
-          error: "Repository name is required",
-        },
-        { status: 400 }
-      );
+      throw APIError.create(ErrorCode.MISSING_REQUIRED_FIELD, {
+        field: "repo",
+        message: "Repository name is required",
+      });
     }
 
-    console.log(`📡 Fetching tree for repo: ${repo}`);
+    logger.info(`Fetching tree for repo: ${repo}`, { repo });
 
     // Step 1: Get user info and rate limit status
     const userResponse = await fetch("https://api.github.com/user", {
@@ -45,27 +49,34 @@ export async function POST(req: NextRequest) {
 
     if (!userResponse.ok) {
       const errorText = await userResponse.text();
-      console.error("❌ User fetch failed:", userResponse.status, errorText);
+      logger.error("User fetch failed", {
+        status: userResponse.status,
+        errorText,
+        rateLimitRemaining: userResponse.headers.get("x-ratelimit-remaining"),
+      });
 
-      return NextResponse.json(
-        {
-          error:
-            userResponse.status === 401
-              ? "GitHub session expired. Please sign in again."
-              : `GitHub API error: ${userResponse.status}`,
+      if (userResponse.status === 401) {
+        throw APIError.create(ErrorCode.TOKEN_EXPIRED, {
+          message: "GitHub session expired. Please sign in again.",
           details: errorText,
           rateLimitRemaining: userResponse.headers.get("x-ratelimit-remaining"),
-        },
-        { status: userResponse.status }
-      );
+        });
+      } else {
+        throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+          message: `GitHub API error: ${userResponse.status}`,
+          details: errorText,
+          rateLimitRemaining: userResponse.headers.get("x-ratelimit-remaining"),
+        });
+      }
     }
 
     const user = await userResponse.json();
     const repoFullName = `${user.login}/${repo}`;
 
-    console.log(
-      `👤 User: ${user.login}, Rate limit remaining: ${userResponse.headers.get("x-ratelimit-remaining")}`
-    );
+    logger.info(`User authenticated`, {
+      user: user.login,
+      rateLimitRemaining: userResponse.headers.get("x-ratelimit-remaining"),
+    });
 
     // Step 2: Check repository access
     const repoResponse = await fetch(
@@ -77,35 +88,38 @@ export async function POST(req: NextRequest) {
           Accept: "application/vnd.github+json",
           "X-GitHub-Api-Version": "2022-11-28",
         },
-      }
+      },
     );
 
     if (!repoResponse.ok) {
       const errorText = await repoResponse.text();
-      console.error(
-        "❌ Repository fetch failed:",
-        repoResponse.status,
-        errorText
-      );
+      logger.error("Repository fetch failed", {
+        repo: repoFullName,
+        status: repoResponse.status,
+        errorText,
+      });
 
-      return NextResponse.json(
-        {
-          error:
-            repoResponse.status === 404
-              ? `Repository '${repoFullName}' not found or access denied`
-              : `Cannot access repository: ${repoResponse.status}`,
+      if (repoResponse.status === 404) {
+        throw APIError.create(ErrorCode.RESOURCE_NOT_FOUND, {
+          message: `Repository '${repoFullName}' not found or access denied`,
           details: errorText,
-        },
-        { status: repoResponse.status }
-      );
+        });
+      } else {
+        throw APIError.create(ErrorCode.GITHUB_API_ERROR, {
+          message: `Cannot access repository: ${repoResponse.status}`,
+          details: errorText,
+        });
+      }
     }
 
     const repoData = await repoResponse.json();
     const defaultBranch = repoData.default_branch || "main";
 
-    console.log(
-      `📁 Repository: ${repoFullName}, Branch: ${defaultBranch}, Size: ${repoData.size}KB`
-    );
+    logger.info(`Repository found`, {
+      repo: repoFullName,
+      branch: defaultBranch,
+      size: repoData.size,
+    });
 
     // Step 3: Fetch repository tree with fallbacks
     const treeUrls = [
@@ -113,14 +127,15 @@ export async function POST(req: NextRequest) {
       `https://api.github.com/repos/${repoFullName}/contents`, // Fallback for small repos
     ];
 
-    let treeData: any = null;
+    let treeData: any[] | null = null; // eslint-disable-line @typescript-eslint/no-explicit-any
     let method = "tree";
 
     for (const [index, treeUrl] of treeUrls.entries()) {
       try {
-        console.log(
-          `🌳 Trying method ${index + 1}: ${index === 0 ? "git/trees" : "contents"}`
-        );
+        logger.debug(`Trying tree fetch method`, {
+          method: index === 0 ? "git/trees" : "contents",
+          attempt: index + 1,
+        });
 
         const treeResponse = await fetch(treeUrl, {
           headers: {
@@ -144,68 +159,80 @@ export async function POST(req: NextRequest) {
               repoFullName,
               githubToken,
               "",
-              data
+              data,
             );
             method = "contents";
           }
 
-          console.log(
-            `✅ Success with method ${index + 1}, found ${treeData.length} items`
-          );
+          logger.info(`Tree fetch successful`, {
+            method: index === 0 ? "git/trees" : "contents",
+            itemCount: treeData!.length,
+          });
           break;
         } else {
-          console.warn(`⚠️ Method ${index + 1} failed:`, treeResponse.status);
+          logger.warn(`Tree fetch method failed`, {
+            method: index === 0 ? "git/trees" : "contents",
+            status: treeResponse.status,
+          });
         }
-      } catch (error: any) {
-        console.warn(`⚠️ Method ${index + 1} error:`, error.message);
+      } catch (error: unknown) {
+        logger.warn(`Tree fetch method error`, {
+          method: index === 0 ? "git/trees" : "contents",
+          error: error instanceof Error ? error.message : String(error),
+        });
         continue;
       }
     }
 
     if (!treeData) {
-      return NextResponse.json(
-        {
-          error: "Failed to fetch repository tree with all methods",
-          suggestion:
-            "Try a smaller repository or check repository permissions",
-        },
-        { status: 500 }
-      );
+      throw APIError.create(ErrorCode.OPERATION_FAILED, {
+        message: "Failed to fetch repository tree with all methods",
+        suggestion: "Try a smaller repository or check repository permissions",
+      });
     }
 
     // Filter and normalize data
     const normalizedFiles = treeData
-      .filter((item: any) => item.path && item.type)
-      .map((item: any) => ({
+      .filter((item) => item.path && item.type)
+      .map((item) => ({
         path: item.path,
-        type: item.type === "dir" ? "tree" : item.type, // Normalize 'dir' to 'tree'
+        type: (item.type === "dir" ? "tree" : item.type) as "tree" | "blob", // Normalize 'dir' to 'tree'
         sha: item.sha,
         size: item.size || 0,
         url: item.url,
       }));
 
-    console.log(
-      `📊 Returning ${normalizedFiles.length} files (method: ${method})`
-    );
-
-    return NextResponse.json({
-      success: true,
-      repository: repoFullName,
-      branch: defaultBranch,
-      files: normalizedFiles,
-      count: normalizedFiles.length,
-      method: method,
-      rateLimitRemaining: userResponse.headers.get("x-ratelimit-remaining"),
+    logger.info(`Returning repository tree`, {
+      repo: repoFullName,
+      fileCount: normalizedFiles.length,
+      method,
     });
-  } catch (error: any) {
-    console.error("💥 Unexpected error:", error);
-    return NextResponse.json(
+
+    const processingTime = Date.now() - startTime;
+    logger.apiResponse("POST", "/api/github-tree", 200, processingTime);
+
+    return createSuccessResponse(
       {
-        error: "Internal server error",
-        details: error.message,
+        repository: repoFullName,
+        branch: defaultBranch,
+        files: normalizedFiles,
+        count: normalizedFiles.length,
+        method,
+        rateLimitRemaining: userResponse.headers.get("x-ratelimit-remaining"),
       },
-      { status: 500 }
+      {
+        processingTime,
+      },
     );
+  } catch (error: unknown) {
+    const processingTime = Date.now() - startTime;
+    logger.error(
+      "Unexpected error in github-tree API",
+      undefined,
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    logger.apiResponse("POST", "/api/github-tree", 500, processingTime);
+    return createErrorResponse(error, { processingTime });
   }
 }
 
@@ -214,9 +241,9 @@ async function flattenContentsRecursively(
   repoFullName: string,
   token: string,
   path: string = "",
-  items?: any[]
-): Promise<any[]> {
-  const allItems: any[] = [];
+  items?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+): Promise<GitHubTreeItem[]> {
+  const allItems: GitHubTreeItem[] = [];
 
   // If items not provided, fetch them
   if (!items) {
@@ -248,11 +275,14 @@ async function flattenContentsRecursively(
         const subItems = await flattenContentsRecursively(
           repoFullName,
           token,
-          item.path
+          item.path,
         );
         allItems.push(...subItems);
       } catch (error) {
-        console.warn(`⚠️ Failed to fetch subdirectory: ${item.path}`);
+        logger.warn(`Failed to fetch subdirectory`, {
+          path: item.path,
+          error: (error as Error).message,
+        });
       }
     }
   }

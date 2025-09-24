@@ -151,17 +151,62 @@ const CREDIT_PLANS: CreditPlan[] = [
 async function fetchCredits(): Promise<{ user: UserCredits }> {
   const response = await fetch("/api/credits");
   if (!response.ok) {
-    throw new Error("Failed to fetch credits");
+    const errorData = await response.json();
+    let errorMessage = "Failed to fetch credits";
+
+    // Handle unified error response format
+    if (errorData.success === false && errorData.error) {
+      errorMessage =
+        errorData.error.message || errorData.error.code || errorMessage;
+    } else if (errorData.error) {
+      // Fallback for old format during transition
+      errorMessage = errorData.error;
+    }
+
+    throw new Error(errorMessage);
   }
-  return response.json();
+
+  const data = await response.json();
+
+  // Handle unified success response format
+  if (data.success === true && data.data) {
+    return data.data;
+  } else if (data.success === false) {
+    throw new Error(data.error?.message || "API returned error");
+  }
+
+  return data;
 }
 
 async function fetchCreditHistory(): Promise<CreditTransaction[]> {
   const response = await fetch("/api/credits/history");
   if (!response.ok) {
-    throw new Error("Failed to fetch credit history");
+    const errorData = await response.json();
+    let errorMessage = "Failed to fetch credit history";
+
+    // Handle unified error response format
+    if (errorData.success === false && errorData.error) {
+      errorMessage =
+        errorData.error.message || errorData.error.code || errorMessage;
+    } else if (errorData.error) {
+      // Fallback for old format during transition
+      errorMessage = errorData.error;
+    }
+
+    throw new Error(errorMessage);
   }
-  return response.json();
+
+  const data = await response.json();
+
+  // Handle unified success response format
+  if (data.success === true && data.data) {
+    return data.data;
+  } else if (data.success === false) {
+    throw new Error(data.error?.message || "API returned error");
+  }
+
+  // Fallback for old format during transition
+  return data;
 }
 
 export default function CreditsPage() {
@@ -225,10 +270,30 @@ export default function CreditsPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to create payment order");
+        const errorData = await response.json();
+        let errorMessage = "Failed to create payment order";
+
+        // Handle unified error response format
+        if (errorData.success === false && errorData.error) {
+          errorMessage =
+            errorData.error.message || errorData.error.code || errorMessage;
+        } else if (errorData.error) {
+          // Fallback for old format during transition
+          errorMessage = errorData.error;
+        }
+
+        throw new Error(errorMessage);
       }
 
-      const orderData = await response.json();
+      const responseData = await response.json();
+
+      // Handle unified success response format
+      let orderData = responseData;
+      if (responseData.success === true && responseData.data) {
+        orderData = responseData.data;
+      } else if (responseData.success === false) {
+        throw new Error(responseData.error?.message || "API returned error");
+      }
 
       // Load Razorpay script if not already loaded
       if (!window.Razorpay) {
@@ -264,12 +329,41 @@ export default function CreditsPage() {
           });
 
           if (verifyResponse.ok) {
-            refetchCredits();
-            toast.success(
-              "Payment successful! Credits have been added to your account.",
-            );
+            const verifyData = await verifyResponse.json();
+
+            // Handle unified success response format
+            if (verifyData.success === true) {
+              refetchCredits();
+              toast.success(
+                "Payment successful! Credits have been added to your account.",
+              );
+            } else {
+              // Handle unified error response format
+              let errorMessage =
+                "Payment verification failed. Please contact support.";
+              if (verifyData.success === false && verifyData.error) {
+                errorMessage =
+                  verifyData.error.message ||
+                  verifyData.error.code ||
+                  errorMessage;
+              }
+              toast.error(errorMessage);
+            }
           } else {
-            toast.error("Payment verification failed. Please contact support.");
+            const errorData = await verifyResponse.json();
+            let errorMessage =
+              "Payment verification failed. Please contact support.";
+
+            // Handle unified error response format
+            if (errorData.success === false && errorData.error) {
+              errorMessage =
+                errorData.error.message || errorData.error.code || errorMessage;
+            } else if (errorData.error) {
+              // Fallback for old format during transition
+              errorMessage = errorData.error;
+            }
+
+            toast.error(errorMessage);
           }
         },
         prefill: {
