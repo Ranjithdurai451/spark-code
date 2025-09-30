@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { getOrCreateUserWithCredits } from "@/lib/credits";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getOrCreateUserWithCredits } from "@/lib/credits/index";
+import { supabaseAdmin } from "@/lib/database/supabase";
 import { APIError } from "@/lib/errors/errorHandler";
 import { ErrorCode } from "@/lib/errors/errorCodes";
 import { createSuccessResponse } from "@/lib/responses/apiResponse";

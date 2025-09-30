@@ -1,4 +1,4 @@
-import { getNextApiKey, handleQuotaError } from "./apiKeyManager";
+import { getNextApiKey, handleQuotaError } from "../api-keys/manager";
 
 const JUDGE0_URL = "https://judge0-ce.p.rapidapi.com/submissions";
 
@@ -65,7 +65,6 @@ export async function executeOnJudge0WithRetry(
       const keyRotated = handleQuotaError("judge0", error);
 
       if (keyRotated && attempt < maxRetries - 1) {
-        console.log(`🔄 Rotated Judge0 key due to quota error, retrying...`);
         continue; // Try with next key
       }
 

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createGeminiClient } from "@/lib/model";
-import { requireCredits } from "@/lib/credits";
+import { createGeminiClient } from "@/lib/services/model";
+import { requireCredits } from "@/lib/credits/index";
 import { streamText } from "ai";
 import { createErrorResponse } from "@/lib/responses/errorResponse";
 import { APIError } from "@/lib/errors/errorHandler";
@@ -384,16 +384,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log(`📊 Enhanced Function Analysis:`, {
-      name: functionSignature.name,
-      parameters: functionSignature.parameters.length,
-      language: detectedLanguage,
-      codeLength: codeToAnalyze.length,
-      algorithmPattern: functionSignature.algorithmPattern,
-      dataStructures: functionSignature.dataStructureTypes,
-      processingTime: Date.now() - startTime,
-    });
-
     // Build enhanced prompt with function context
     const prompt = LEETCODE_TEST_CASE_PROMPT.replace(
       /\{user_code\}/g,
@@ -576,16 +566,10 @@ function extractJavaFunction(code: string): FunctionSignature {
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
-    // Debug
-    console.log(
-      `✅ Found Java function: ${functionName}(${parameters.join(", ")}) : ${returnType}`,
-    );
-
     return signature;
   }
 
   // If nothing found, return invalid signature
-  console.log(`❌ No valid Java function detected`);
   return {
     name: "",
     parameters: [],
@@ -663,9 +647,6 @@ function extractPythonFunction(code: string): FunctionSignature {
         dataStructureTypes: detectDataStructureTypes(parameters, returnType),
       };
 
-      console.log(
-        `✅ Found Python function: ${functionName} with pattern: ${signature.algorithmPattern}`,
-      );
       return signature;
     }
   }
@@ -730,9 +711,6 @@ function extractCppFunction(code: string): FunctionSignature {
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
-    console.log(
-      `✅ Found C++ function: ${functionName} with pattern: ${signature.algorithmPattern}`,
-    );
     return signature;
   }
 
@@ -787,9 +765,6 @@ function extractCFunction(code: string): FunctionSignature {
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
-    console.log(
-      `✅ Found C function: ${functionName} with pattern: ${signature.algorithmPattern}`,
-    );
     return signature;
   }
 
@@ -837,9 +812,6 @@ function extractGoFunction(code: string): FunctionSignature {
       dataStructureTypes: detectDataStructureTypes(parameters, returnType),
     };
 
-    console.log(
-      `✅ Found Go function: ${functionName} with pattern: ${signature.algorithmPattern}`,
-    );
     return signature;
   }
 
@@ -930,9 +902,6 @@ function extractJavaScriptFunction(code: string): FunctionSignature {
           dataStructureTypes: detectDataStructureTypes(parameters, ""),
         };
 
-        console.log(
-          `✅ Found JavaScript function: ${functionName} with pattern: ${signature.algorithmPattern}`,
-        );
         return signature;
       }
     }
@@ -1033,9 +1002,6 @@ function extractTypeScriptFunction(code: string): FunctionSignature {
           dataStructureTypes: detectDataStructureTypes(parameters, returnType),
         };
 
-        console.log(
-          `✅ Found TypeScript function: ${functionName} with pattern: ${signature.algorithmPattern}`,
-        );
         return signature;
       }
     }
@@ -1091,12 +1057,10 @@ function detectLanguageFromCode(code: string): string {
   // Check TypeScript first since it's a superset of JavaScript
   for (const { pattern, language } of languagePatterns) {
     if (pattern.test(code)) {
-      console.log(`🔍 Detected language: ${language}`);
       return language;
     }
   }
 
-  console.log(`🔍 Defaulting to Java (no pattern matched)`);
   return "java";
 }
 

@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateCreditsExact } from "@/lib/utils";
 import { MemoizedMarkdown } from "@/components/mardown-render/MemoizedMarkdown";
 import { useEditorStore } from "@/components/features/editor/editorStore";
 import { useCredentialsStore } from "./credentialsStore";
@@ -56,6 +58,7 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
 
   const { tabs, activeTabId } = useEditorStore();
   const currentTab = tabs.find((tab) => tab.id === activeTabId);
+  const queryClient = useQueryClient();
 
   const {
     messages,
@@ -113,6 +116,10 @@ export function DSAChatbotModal({ isOpen, onClose }: ChatbotModalProps) {
       }
 
       toast.error(errorMessage);
+    },
+    onFinish: (message) => {
+      // Invalidate credits query to refresh balance
+      invalidateCreditsExact(queryClient);
     },
   });
 

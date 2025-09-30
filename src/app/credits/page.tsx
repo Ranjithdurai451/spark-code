@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useUserCredits } from "@/components/features/editor/useApiOperations";
 import { toast } from "sonner";
 import {
   CreditCard,
@@ -218,6 +219,7 @@ interface RazorpayResponse {
 export default function CreditsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
@@ -227,20 +229,7 @@ export default function CreditsPage() {
     isLoading: isLoadingCredits,
     error: creditsError,
     refetch: refetchCredits,
-  } = useQuery({
-    queryKey: ["credits"],
-    queryFn: fetchCredits,
-    enabled: status === "authenticated",
-    retry: 3,
-  });
-
-  // Dispatch event when credits data changes
-  useEffect(() => {
-    if (creditsData) {
-      window.dispatchEvent(new CustomEvent("credits-updated"));
-      localStorage.setItem("credits-updated", Date.now().toString());
-    }
-  }, [creditsData]);
+  } = useUserCredits(status === "authenticated");
 
   const {
     data: historyData,
@@ -263,7 +252,7 @@ export default function CreditsPage() {
     retry: 3,
   });
 
-  const userData = creditsData?.user || null;
+  const userData = creditsData || null;
   const currentCredits = userData?.credits || 0;
 
   // Calculate statistics
@@ -518,6 +507,8 @@ export default function CreditsPage() {
               size="sm"
               onClick={() => {
                 refetchCredits();
+                // Also refetch history data
+                queryClient.refetchQueries({ queryKey: ["credit-history"] });
                 toast.success("Refreshing data...");
               }}
               disabled={isLoadingCredits}

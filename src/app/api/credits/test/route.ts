@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrCreateUserWithCredits } from "@/lib/credits";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getOrCreateUserWithCredits } from "@/lib/credits/index";
+import { supabaseAdmin } from "@/lib/database/supabase";
 
 export async function GET(req: NextRequest) {
   try {

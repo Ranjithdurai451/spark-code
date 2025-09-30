@@ -1,7 +1,7 @@
 // app/api/chatbot/route.ts
 import { NextRequest } from "next/server";
-import { createGeminiClient } from "@/lib/model";
-import { requireCredits } from "@/lib/credits";
+import { createGeminiClient } from "@/lib/services/model";
+import { requireCredits } from "@/lib/credits/index";
 import { streamText } from "ai";
 import { createErrorResponse } from "@/lib/responses/errorResponse";
 import { APIError } from "@/lib/errors/errorHandler";
@@ -323,27 +323,6 @@ ${codeContext}
 ${hasCodeContext ? "- Reference the current code context when answering" : ""}
 
 Please provide a detailed, helpful response that demonstrates expertise while being accessible and encouraging.`;
-
-    console.log("DSA Chatbot Request:", {
-      messageCount: messages.length,
-      requestType: isCodeAnalysisRequest
-        ? "Code Analysis"
-        : isOptimizationRequest
-          ? "Optimization"
-          : isDebuggingRequest
-            ? "Debugging"
-            : isComplexityRequest
-              ? "Complexity Analysis"
-              : isExplanationRequest
-                ? "Explanation"
-                : "General",
-      hasCodeContext: hasCodeContext,
-      hasCodeInConversation: hasCodeInConversation,
-      currentFile: currentTab
-        ? `${currentTab.name} (${currentTab.language})`
-        : "None",
-      userQuery: userMessage.content.substring(0, 100) + "...",
-    });
 
     const result = streamText({
       model: gemini("gemini-2.0-flash"),

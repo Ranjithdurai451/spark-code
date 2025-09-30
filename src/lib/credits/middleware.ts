@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/database/supabase";
 import { APIError } from "../errors/errorHandler";
 import { ErrorCode } from "../errors/errorCodes";
 import { createErrorResponse } from "../responses/errorResponse";
@@ -19,14 +19,15 @@ export interface CreditCheckResult {
 }
 
 /**
- * Check if user has sufficient credits
+ * Check if user has sufficient credits (optimized with single query)
  */
 export async function checkUserCredits(
   userId: string,
   requiredCredits: number,
 ): Promise<CreditCheckResult> {
   try {
-    const { data: user, error } = await supabaseAdmin
+    // Use a single optimized query to get credits and check
+    const { data, error } = await supabaseAdmin
       .from("users")
       .select("credits")
       .eq("id", userId)
@@ -43,14 +44,14 @@ export async function checkUserCredits(
       });
     }
 
-    if (!user) {
+    if (!data) {
       throw APIError.create(ErrorCode.RESOURCE_NOT_FOUND, {
         userId,
         resource: "user",
       });
     }
 
-    const availableCredits = user.credits || 0;
+    const availableCredits = data.credits || 0;
     const allowed = availableCredits >= requiredCredits;
     const shortfall = allowed ? 0 : requiredCredits - availableCredits;
 
@@ -87,7 +88,7 @@ export async function checkUserCredits(
 }
 
 /**
- * Deduct credits from user account
+ * Deduct credits from user account (optimized with database function)
  */
 export async function deductCredits(
   userId: string,
@@ -96,7 +97,7 @@ export async function deductCredits(
   description?: string,
 ): Promise<string> {
   try {
-    const { data: result, error } = await supabaseAdmin.rpc("deduct_credits", {
+    const { data: result, error } = await supabaseAdmin.rpc("consume_credits", {
       p_user_id: userId,
       p_amount: amount,
       p_feature_type: featureType,
@@ -145,7 +146,7 @@ export async function deductCredits(
 
     logger.creditTransaction(userId, "deduction", amount, featureType, {
       transactionId,
-      remainingCredits: resultData.remaining_credits,
+      remainingCredits: resultData.new_balance,
     });
 
     return transactionId;
@@ -174,7 +175,7 @@ export async function deductCredits(
 }
 
 /**
- * Add credits to user account (for purchases, bonuses, etc.)
+ * Add credits to user account (for purchases, bonuses, etc.) - optimized
  */
 export async function addCredits(
   userId: string,
@@ -232,7 +233,7 @@ export async function addCredits(
 
     logger.creditTransaction(userId, "addition", amount, type, {
       transactionId,
-      newTotalCredits: resultData.new_credits,
+      newTotalCredits: resultData.new_balance,
     });
 
     return transactionId;
@@ -261,11 +262,11 @@ export async function addCredits(
 }
 
 /**
- * Get user's credit balance
+ * Get user's credit balance (optimized)
  */
 export async function getUserCredits(userId: string): Promise<number> {
   try {
-    const { data: user, error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("users")
       .select("credits")
       .eq("id", userId)
@@ -282,7 +283,7 @@ export async function getUserCredits(userId: string): Promise<number> {
       });
     }
 
-    return user?.credits || 0;
+    return data?.credits || 0;
   } catch (error) {
     if (error instanceof APIError) {
       throw error;
@@ -338,7 +339,7 @@ export function withAuthAndCredits<T extends any[]>(
 
     try {
       // Import here to avoid circular dependencies
-      const { requireAuth } = await import("./auth");
+      const { requireAuth } = await import("../middleware/auth");
 
       // Authenticate user
       const user = await requireAuth(req);

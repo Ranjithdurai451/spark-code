@@ -1,6 +1,6 @@
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import GitHubProvider from "next-auth/providers/github";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/database/supabase";
 
 const authOptions: NextAuthOptions = {
   session: {
@@ -23,7 +23,7 @@ const authOptions: NextAuthOptions = {
       // Persist the OAuth access_token and user info to the token right after signin
       if (account && profile) {
         token.accessToken = account.access_token;
-        token.login = (profile as any)?.login;
+        token.login = (profile as { login?: string })?.login;
       }
       return token;
     },
@@ -40,7 +40,7 @@ const authOptions: NextAuthOptions = {
             .single();
 
           if (userData) {
-            (session.user as any).credits = userData.credits;
+            session.user.credits = userData.credits;
           }
         } catch (error) {
           console.error("Failed to get user credits:", error);
@@ -63,7 +63,7 @@ const authOptions: NextAuthOptions = {
             // Only create new user if they don't exist
             const userData = {
               id: user.id,
-              login: (profile as any).login || user.id,
+              login: (profile as { login?: string }).login || user.id,
               email: user.email,
               name: user.name,
               avatar_url: user.image,

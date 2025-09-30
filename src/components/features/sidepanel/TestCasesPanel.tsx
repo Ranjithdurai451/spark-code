@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { invalidateCreditsExact } from "@/lib/utils";
 import {
   TestTube,
   RotateCcw,
@@ -167,6 +169,70 @@ export function TestCasesPanel({
   const [runningTestId, setRunningTestId] = useState<string | null>(null);
   const [pauseRequested, setPauseRequested] = useState(false);
   const [currentTestIndex, setCurrentTestIndex] = useState(0);
+  const queryClient = useQueryClient();
+
+  const aiExecuteMutation = useMutation({
+    mutationFn: async (params: {
+      code: string;
+      language: string;
+      testCase: { input: any[]; output: any };
+    }) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+      try {
+        const res = await fetch("/api/ai-execute", {
+          method: "POST",
+          body: JSON.stringify(params),
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          let errorMessage = `HTTP ${res.status}: ${res.statusText}`;
+
+          try {
+            const errorData = JSON.parse(errorText);
+            // Handle unified error response format
+            if (errorData.success === false && errorData.error) {
+              errorMessage =
+                errorData.error.message || errorData.error.code || errorMessage;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (parseError) {
+            // Use the raw error text if JSON parsing fails
+          }
+
+          throw new Error(errorMessage);
+        }
+
+        const data = await res.json();
+
+        // Handle unified success response format
+        if (data.success === true && data.data) {
+          return data.data;
+        } else if (data.success === false) {
+          throw new Error(data.error?.message || "AI execution failed");
+        }
+
+        return data;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
+    onSuccess: () => {
+      // Invalidate credits query to refresh balance
+      invalidateCreditsExact(queryClient);
+    },
+    onError: () => {
+      // Also invalidate on error to ensure credits are up to date
+      invalidateCreditsExact(queryClient);
+    },
+  });
 
   // New state for enhanced analytics
   const [executionStats, setExecutionStats] = useState({
@@ -543,84 +609,16 @@ export function TestCasesPanel({
       const startTime = Date.now();
 
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased timeout for complex operations
-
-        const res = await fetch("/api/ai-execute", {
-          method: "POST",
-          body: JSON.stringify({
-            code: tab.code,
-            language: tab.language,
-            testCase: {
-              input: testCase.input,
-              output: testCase.output,
-            },
-          }),
-          headers: { "Content-Type": "application/json" },
-          signal: controller.signal,
+        const data = await aiExecuteMutation.mutateAsync({
+          code: tab.code,
+          language: tab.language,
+          testCase: {
+            input: testCase.input,
+            output: testCase.output,
+          },
         });
 
-        clearTimeout(timeoutId);
-
-        if (!res.ok) {
-          const errorText = await res.text();
-          let errorMessage = `HTTP ${res.status}: ${res.statusText}`;
-
-          try {
-            const errorData = JSON.parse(errorText);
-
-            // Handle new unified error response format
-            if (errorData.success === false && errorData.error) {
-              errorMessage =
-                errorData.error.message || errorData.error.code || errorMessage;
-            } else if (errorData.error) {
-              // Fallback for old format during transition
-              errorMessage = errorData.error;
-            }
-
-            // Provide user-friendly messages for common errors
-            if (
-              res.status === 400 ||
-              errorData.error?.code === "INVALID_REQUEST"
-            ) {
-              errorMessage =
-                "Invalid test case or code. Please check your input.";
-            } else if (
-              res.status === 429 ||
-              errorData.error?.code === "RATE_LIMIT_EXCEEDED"
-            ) {
-              errorMessage = "Too many requests. Please wait and try again.";
-            } else if (
-              res.status === 500 ||
-              errorData.error?.code === "INTERNAL_ERROR"
-            ) {
-              errorMessage =
-                "Test execution service is temporarily unavailable.";
-            } else if (
-              res.status === 401 ||
-              errorData.error?.code === "UNAUTHENTICATED"
-            ) {
-              errorMessage = "Authentication required. Please sign in again.";
-            }
-          } catch {
-            // Use the raw error text if JSON parsing fails
-            if (errorText) errorMessage = errorText;
-          }
-
-          throw new Error(errorMessage);
-        }
-
-        const responseData = await res.json();
         const executionTime = Date.now() - startTime;
-
-        // Handle unified API response format
-        let data = responseData;
-        if (responseData.success === true && responseData.data) {
-          data = responseData.data;
-        } else if (responseData.success === false) {
-          // This shouldn't happen for successful HTTP status
-          throw new Error(responseData.error?.message || "API returned error");
-        }
 
         // Enhanced test case update with new fields
         setTestCases((prev) =>
@@ -660,9 +658,7 @@ export function TestCasesPanel({
         const executionTime = Date.now() - startTime;
 
         let errorMessage = "Execution failed";
-        if (error.name === "AbortError") {
-          errorMessage = "Test execution timed out (45s limit exceeded)";
-        } else if (error.message) {
+        if (error.message) {
           errorMessage = error.message;
         }
 

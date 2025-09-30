@@ -59,7 +59,6 @@ interface GitHubRepo {
 
 // SECURE: Use server-side API instead of client-side GitHub calls
 async function fetchRepositories(): Promise<GitHubRepo[]> {
-  console.log("📡 Fetching repositories via secure API...");
   const response = await fetch("/api/github-repos");
 
   if (!response.ok) {
@@ -82,7 +81,6 @@ async function fetchRepositories(): Promise<GitHubRepo[]> {
     repos = responseData;
   }
 
-  console.log(`✅ Received ${repos.length} repositories from API`);
   return repos;
 }
 
@@ -182,7 +180,6 @@ export default function SettingsDialog({
   // HANDLE SESSION: Set user data and migrate keys if needed
   useEffect(() => {
     if (session?.user && status === "authenticated") {
-      console.log("👤 Session user detected:", session.user.login);
       const enhancedUser = {
         login: session.user.login || session.user.name || "unknown",
         name: session.user.name ?? null,

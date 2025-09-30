@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/database/supabase";
 import { createSuccessResponse } from "@/lib/responses/apiResponse";
 import { createErrorResponse } from "@/lib/responses/errorResponse";
 import { APIError } from "@/lib/errors/errorHandler";

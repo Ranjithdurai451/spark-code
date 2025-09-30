@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { getOrCreateUserWithCredits } from "@/lib/credits";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getOrCreateUserWithCredits } from "@/lib/credits/index";
+import { supabaseAdmin } from "@/lib/database/supabase";
 import crypto from "crypto";
 import { APIError, createErrorResponse } from "@/lib/errors/errorHandler";
 import { ErrorCode } from "@/lib/errors/errorCodes";
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check for duplicate payment processing
-    const { data: existingPayment, error: checkError } = await supabaseAdmin
+    const { data: existingPayment } = await supabaseAdmin
       .from("credit_additions")
       .select("id")
       .eq("razorpay_payment_id", razorpay_payment_id)

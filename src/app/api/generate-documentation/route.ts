@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createGeminiClient } from "@/lib/model";
-import { requireCredits } from "@/lib/credits";
+import { createGeminiClient } from "@/lib/services/model";
+import { requireCredits } from "@/lib/credits/index";
 import { generateText } from "ai";
 import {
   extractJavaFunction,
@@ -142,81 +142,6 @@ function detectLanguage(code: string): string {
   return "javascript";
 }
 
-function detectAlgorithmPattern(
-  functionName: string,
-  parameters: string[],
-  code: string,
-): string {
-  const name = functionName.toLowerCase();
-  const codeStr = code.toLowerCase();
-
-  const patterns = [
-    { keywords: ["twosum", "two_sum"], pattern: "two_pointer_technique" },
-    { keywords: ["threesum", "three_sum"], pattern: "three_pointer_technique" },
-    {
-      keywords: ["binary_search", "binarysearch", "search"],
-      pattern: "binary_search",
-    },
-    {
-      keywords: ["reverse", "reverselist", "reverse_list"],
-      pattern: "linked_list_reversal",
-    },
-    {
-      keywords: ["merge", "mergelist", "merge_list"],
-      pattern: "merge_technique",
-    },
-    {
-      keywords: ["valid", "isvalid", "check"],
-      pattern: "validation_algorithm",
-    },
-    { keywords: ["palindrome", "ispalindrome"], pattern: "palindrome_check" },
-    { keywords: ["anagram", "isanagram"], pattern: "string_manipulation" },
-    { keywords: ["subarray", "maxsubarray"], pattern: "kadane_algorithm" },
-    { keywords: ["substring", "longestsubstring"], pattern: "sliding_window" },
-    { keywords: ["permutation", "permute"], pattern: "backtracking" },
-    { keywords: ["combination", "combine"], pattern: "backtracking" },
-    { keywords: ["subset", "subsets"], pattern: "bit_manipulation" },
-    { keywords: ["climb", "stairs"], pattern: "dynamic_programming" },
-    { keywords: ["coin", "change"], pattern: "dynamic_programming" },
-    { keywords: ["fibonacci", "fib"], pattern: "dynamic_programming" },
-    { keywords: ["island", "islands"], pattern: "graph_traversal" },
-    { keywords: ["rotate", "rotation"], pattern: "array_manipulation" },
-    { keywords: ["depth", "height"], pattern: "tree_traversal" },
-    {
-      keywords: ["inorder", "preorder", "postorder"],
-      pattern: "tree_traversal",
-    },
-  ];
-
-  for (const { keywords, pattern } of patterns) {
-    if (keywords.some((keyword) => name.includes(keyword))) {
-      return pattern;
-    }
-  }
-
-  // Check code patterns
-  if (
-    codeStr.includes("left") &&
-    codeStr.includes("right") &&
-    codeStr.includes("mid")
-  )
-    return "binary_search";
-  if (
-    codeStr.includes("next") &&
-    (codeStr.includes("prev") || codeStr.includes("head"))
-  )
-    return "linked_list_operations";
-  if (codeStr.includes("dp") || codeStr.includes("memo"))
-    return "dynamic_programming";
-  if (
-    codeStr.includes("visited") &&
-    (codeStr.includes("dfs") || codeStr.includes("bfs"))
-  )
-    return "graph_traversal";
-
-  return "general_algorithm";
-}
-
 function createEmptyFunctionInfo(language: string): FunctionInfo {
   return {
     name: "",
@@ -301,14 +226,6 @@ export async function POST(req: NextRequest) {
     // Extract function information
     const functionInfo = extractFunctionInfo(codeToDocument, detectedLanguage);
 
-    console.log(`📝 Documentation Request:`, {
-      function: functionInfo.name || "anonymous",
-      language: detectedLanguage,
-      pattern: functionInfo.algorithmPattern,
-      codeLength: codeToDocument.length,
-      processingTime: Date.now() - startTime,
-    });
-
     // Build documentation prompt
     const documentationPrompt = CODE_DOCUMENTATION_PROMPT.replace(
       /\{user_code\}/g,
@@ -334,7 +251,7 @@ export async function POST(req: NextRequest) {
     if (typeof result === "string") {
       rawText = result;
     } else if (result && typeof result === "object" && "text" in result) {
-      rawText = (result as any).text;
+      rawText = (result as { text: string }).text;
     } else {
       rawText = String(result);
     }
@@ -353,8 +270,6 @@ export async function POST(req: NextRequest) {
         cleanedCode = match[1].trim();
       }
     }
-
-    console.log("Generated documentation length:", cleanedCode.length);
 
     logger.apiResponse("POST", req.url, 200, Date.now() - startTime, {
       function: functionInfo.name || "anonymous",

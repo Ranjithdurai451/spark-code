@@ -1,7 +1,7 @@
 // app/api/execute/route.ts
 import { NextRequest } from "next/server";
-import { requireCredits } from "@/lib/credits";
-import { executeOnJudge0 } from "@/lib/judge0";
+import { requireCredits } from "@/lib/credits/index";
+import { executeOnJudge0 } from "@/lib/services/judge0";
 import { createSuccessResponse } from "@/lib/responses/apiResponse";
 import { createErrorResponse } from "@/lib/responses/errorResponse";
 import { APIError } from "@/lib/errors/errorHandler";

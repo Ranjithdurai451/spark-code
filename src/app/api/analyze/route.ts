@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { createStreamingGeminiModel } from "@/lib/model";
-import { requireCredits } from "@/lib/credits";
+import { createStreamingGeminiModel } from "@/lib/services/model";
+import { requireCredits } from "@/lib/credits/index";
 import { streamText } from "ai";
 import { extractFunctionInfo } from "@/lib/extractor";
 import { createErrorResponse } from "@/lib/responses/errorResponse";
@@ -123,10 +123,7 @@ function detectLanguage(code: string): string {
 }
 
 // Enhanced code quality assessment
-function assessCodeQuality(
-  code: string,
-  language: string,
-): { score: number; level: string } {
+function assessCodeQuality(code: string): { score: number; level: string } {
   let score = 5; // Base score
 
   // Complexity analysis
@@ -253,22 +250,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Assess code quality
-    const quality = assessCodeQuality(codeToAnalyze, detectedLanguage);
-
-    console.log(`🔍 Analysis Request:`, {
-      function: functionInfo.name,
-      language: detectedLanguage,
-      pattern: functionInfo.algorithmPattern,
-      quality: `${quality.score}/10 (${quality.level})`,
-      codeLength: codeToAnalyze.length,
-      processingTime: Date.now() - startTime,
-    });
+    const quality = assessCodeQuality(codeToAnalyze);
 
     // Generate optimization example (basic template)
-    const optimizationExample = generateOptimizationExample(
-      functionInfo,
-      codeToAnalyze,
-    );
+    const optimizationExample = generateOptimizationExample(functionInfo);
 
     // Build analysis prompt
     const analysisPrompt = CODE_ANALYSIS_PROMPT.replace(
@@ -331,10 +316,7 @@ export async function POST(req: NextRequest) {
 }
 
 // Generate basic optimization example
-function generateOptimizationExample(
-  functionInfo: FunctionInfo,
-  code: string,
-): string {
+function generateOptimizationExample(functionInfo: FunctionInfo): string {
   const patterns = {
     linked_list_reversal: `// Optimized with clear variable names and comments
 ListNode prev = null;

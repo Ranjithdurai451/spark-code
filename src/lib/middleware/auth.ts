@@ -9,6 +9,7 @@ import { ErrorCode } from "../errors/errorCodes";
 import { createErrorResponse } from "../responses/errorResponse";
 import { logger } from "../logging/logger";
 import { User, RequestContext } from "@/types/api";
+import { supabaseAdmin } from "../database/supabase";
 
 export interface AuthResult {
   user: User | null;
@@ -46,20 +47,23 @@ export async function authenticateUser(req: NextRequest): Promise<AuthResult> {
         isAuthenticated: false,
       };
     }
-
+    const { data: user, error } = await supabaseAdmin
+      .from("users")
+      .update({ last_login_at: new Date().toISOString() })
+      .eq("id", token.sub)
+      .select(
+        `
+          id, login, email, name, avatar_url, credits,
+          total_credits_earned, total_credits_spent,
+          created_at, updated_at, last_login_at
+        `,
+      )
+      .single();
+    if (error) {
+      console.error("User update error:", error);
+      throw error;
+    }
     // Construct user object from token
-    const user: User = {
-      id: token.sub,
-      login: token.login as string,
-      email: token.email as string,
-      name: token.name as string,
-      avatar_url: token.picture as string,
-      credits: (token as any).credits || 0,
-      total_credits_earned: (token as any).total_credits_earned || 0,
-      total_credits_spent: (token as any).total_credits_spent || 0,
-      created_at: (token as any).created_at || new Date().toISOString(),
-      last_login_at: new Date().toISOString(),
-    };
 
     logger.authEvent("token_validated", user.id, {
       login: user.login,

@@ -70,7 +70,6 @@ export function handleQuotaError(service: ApiService, error: any): boolean {
   );
 
   if (isQuotaError) {
-    console.log(`🔄 Quota exceeded for ${service}, rotating to next key`);
     // Force rotation by incrementing the index
     currentKeyIndex[service] =
       (currentKeyIndex[service] + 1) %

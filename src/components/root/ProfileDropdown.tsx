@@ -25,14 +25,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import SettingsDialog from "./SettingsDialog";
-
-async function fetchCredits(): Promise<{ user: { credits: number } }> {
-  const response = await fetch("/api/credits");
-  if (!response.ok) {
-    throw new Error("Failed to fetch credits");
-  }
-  return response.json();
-}
+import { useUserCredits } from "@/components/features/editor/useApiOperations";
 
 export default function ProfileDropdown() {
   const { data: session, status } = useSession();
@@ -45,38 +38,9 @@ export default function ProfileDropdown() {
     isLoading: isLoadingCredits,
     error: creditsError,
     refetch: refetchCredits,
-  } = useQuery({
-    queryKey: ["credits"],
-    queryFn: fetchCredits,
-    enabled: status === "authenticated",
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-    refetchInterval: 10000, // Refetch every 10 seconds
-    staleTime: 5000, // Consider data stale after 5 seconds
-  });
+  } = useUserCredits(status === "authenticated");
 
-  // Listen for credits update events
-  useEffect(() => {
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "credits-updated") {
-        refetchCredits();
-      }
-    };
-
-    const handleCreditsUpdate = () => {
-      refetchCredits();
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("credits-updated", handleCreditsUpdate);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("credits-updated", handleCreditsUpdate);
-    };
-  }, [refetchCredits]);
+  // Credits updates are now handled automatically by React Query invalidation
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -94,8 +58,6 @@ export default function ProfileDropdown() {
   const handleCreditsClick = () => {
     router.push("/credits");
   };
-
-
 
   if (status === "loading") {
     return (
@@ -157,7 +119,7 @@ export default function ProfileDropdown() {
                 <AlertCircle className="w-3 h-3 text-destructive" />
               ) : (
                 <Badge variant="secondary" className="text-xs">
-                  {creditsData?.user?.credits ?? session?.user?.credits ?? 0}
+                  {creditsData?.credits ?? session?.user?.credits ?? 0}
                 </Badge>
               )}
             </div>
@@ -181,7 +143,6 @@ export default function ProfileDropdown() {
             Credits & Billing
           </DropdownMenuItem>
 
-
           <SettingsDialog />
           <DropdownMenuSeparator />
 
@@ -199,8 +160,6 @@ export default function ProfileDropdown() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-
     </>
   );
 }

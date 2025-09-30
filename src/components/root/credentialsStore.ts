@@ -99,9 +99,6 @@ export const useCredentialsStore = create<CredentialsState>()(
         if (!session?.user) {
           // No session user: only clear user-related state, but keep local API keys
           if (currentUser) {
-            console.log(
-              "🧹 Session expired - clearing user data (keeping local API keys)"
-            );
             set({
               githubUser: null,
               githubRepo: null,
@@ -115,7 +112,6 @@ export const useCredentialsStore = create<CredentialsState>()(
             geminiApiKey?.storageMode === "secure" ||
             judge0ApiKey?.storageMode === "secure"
           ) {
-            console.log("🚨 No session user - clearing secure keys");
             get().clearApiKeys();
           }
           return;
@@ -130,9 +126,6 @@ export const useCredentialsStore = create<CredentialsState>()(
 
         // Check if user changed
         if (currentUser && currentUser.login !== sessionUser.login) {
-          console.log(
-            "🔄 User changed - clearing previous user data and keeping local API keys"
-          );
           set({
             githubUser: null,
             githubRepo: null,
@@ -156,6 +149,6 @@ export const useCredentialsStore = create<CredentialsState>()(
         geminiApiKey: state.geminiApiKey,
         judge0ApiKey: state.judge0ApiKey,
       }),
-    }
-  )
+    },
+  ),
 );

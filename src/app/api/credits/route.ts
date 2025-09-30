@@ -1,4 +1,3 @@
-import { NextRequest } from "next/server";
 import { createSuccessResponse } from "@/lib/responses/apiResponse";
 import { createErrorResponse } from "@/lib/responses/errorResponse";
 import { withAuth } from "@/lib/middleware/auth";

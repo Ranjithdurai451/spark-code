@@ -2,6 +2,8 @@
 import { Tab, useEditorStore } from "@/components/features/editor/editorStore";
 import { useState, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateCreditsExact } from "@/lib/utils";
 import {
   Brain,
   TestTube2,
@@ -32,6 +34,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useCredentialsStore } from "@/components/root/credentialsStore";
+import { useExecuteMutation } from "@/components/features/editor/useApiOperations";
 
 // Simplified error parser
 // function parseApiError(error: any): { message: string; suggestion?: string; category?: string } {
@@ -55,7 +58,6 @@ interface SidePanelProps {
 export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
   const { clearApiKeys } = useCredentialsStore();
   const { activeTabId, tabs } = useEditorStore();
-  const [running, setRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [activePanel, setActivePanel] = useState<string | null>(null);
   const [hoveredAction, setHoveredAction] = useState<string | null>(null);
@@ -69,6 +71,9 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
     suggestion?: string;
     category?: string;
   } | null>(null);
+
+  const executeMutation = useExecuteMutation();
+  const queryClient = useQueryClient();
 
   const tab: Tab | undefined = tabs.find((item) => item.id == activeTabId);
 
@@ -127,6 +132,8 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
     },
     onFinish: (message) => {
       setAnalysisError(null);
+      // Invalidate credits query to refresh balance
+      invalidateCreditsExact(queryClient);
     },
   });
 
@@ -185,8 +192,9 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
       });
     },
     onFinish: (message) => {
-      console.log("Test generation completed:", message);
       setTestError(null); // Clear error on success
+      // Invalidate credits query to refresh balance
+      invalidateCreditsExact(queryClient);
     },
   });
 
@@ -275,66 +283,36 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
       return;
     }
     const { code, language } = tab;
-    setRunning(true);
     setOutput("🚀 Running your code...");
     setActivePanel("output");
 
-    try {
-      const res = await fetch("/api/execute", {
-        method: "POST",
-        body: JSON.stringify({ code, language }),
-        headers: { "Content-Type": "application/json" },
-      });
+    executeMutation.mutate(
+      { code, language },
+      {
+        onSuccess: (data) => {
+          setOutput(data.output);
+        },
+        onError: (error) => {
+          let errorMessage = "Failed to execute code";
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        let errorMessage = "Failed to execute code";
+          // Handle unified error format
+          if (error.message) {
+            errorMessage = error.message;
+          }
 
-        // Handle new unified error response format
-        if (errorData.success === false && errorData.error) {
-          errorMessage =
-            errorData.error.message || errorData.error.code || errorMessage;
-        } else if (errorData.error) {
-          // Fallback for old format during transition
-          errorMessage = errorData.error;
-        }
+          // Provide user-friendly messages for common errors
+          if (errorMessage.includes("INVALID_REQUEST")) {
+            errorMessage = "Invalid code or language. Please check your input.";
+          } else if (errorMessage.includes("RATE_LIMIT")) {
+            errorMessage = "Too many requests. Please wait and try again.";
+          } else if (errorMessage.includes("INTERNAL_ERROR")) {
+            errorMessage = "Code execution service is temporarily unavailable.";
+          }
 
-        // Provide user-friendly messages for common errors
-        if (res.status === 400 || errorData.error?.code === "INVALID_REQUEST") {
-          errorMessage = "Invalid code or language. Please check your input.";
-        } else if (
-          res.status === 429 ||
-          errorData.error?.code === "RATE_LIMIT_EXCEEDED"
-        ) {
-          errorMessage = "Too many requests. Please wait and try again.";
-        } else if (
-          res.status === 500 ||
-          errorData.error?.code === "INTERNAL_ERROR"
-        ) {
-          errorMessage = "Code execution service is temporarily unavailable.";
-        }
-
-        setOutput(`❌ Error: ${errorMessage}`);
-      } else {
-        const data = await res.json();
-
-        // Handle new unified success response format
-        let output = "✅ Code executed successfully with no output";
-        if (data.success === true && data.output) {
-          output = data.output;
-        } else if (data.output || data.stderr || data.error) {
-          // Fallback for old format during transition
-          output = data.output || data.stderr || data.error || output;
-        }
-
-        setOutput(output);
-      }
-    } catch (error) {
-      console.error("Execution error:", error);
-      setOutput("❌ Error: Failed to execute code - network error");
-    } finally {
-      setRunning(false);
-    }
+          setOutput(`❌ Error: ${errorMessage}`);
+        },
+      },
+    );
   }
 
   // Keyboard shortcuts
@@ -348,7 +326,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
           case "e":
             event.preventDefault();
             event.stopPropagation();
-            if (!running && tab) {
+            if (!executeMutation.isPending && tab) {
               if (!isVisible) showPanel(); // Show panel if hidden
               setActivePanel("output");
               handleRun();
@@ -385,7 +363,7 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [
-    running,
+    executeMutation.isPending,
     isAnalyzing,
     isGeneratingTests,
     tab,
@@ -508,11 +486,11 @@ export default function SidePanel({ isVisible, showPanel }: SidePanelProps) {
       description: "Execute your code with real-time output and error handling",
       icon: Play,
       accentIcon: Rocket,
-      isActive: running,
+      isActive: executeMutation.isPending,
       hasContent: !!output,
       hasError: false,
       onClick: handleRun,
-      buttonText: running ? "Running..." : "Execute",
+      buttonText: executeMutation.isPending ? "Running..." : "Execute",
       shortcut: "Alt+E",
       features: ["Real-time Output", "Error Details", "Debug Info"],
       beta: false,

@@ -1,5 +1,5 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { getNextApiKey, handleQuotaError } from "./apiKeyManager";
+import { getNextApiKey, handleQuotaError } from "../api-keys/manager";
 
 export type GeminiModelName =
   | "gemini-2.0-flash"
@@ -12,7 +12,7 @@ export function createGeminiClient() {
 }
 
 export function getGeminiModel(
-  modelName: GeminiModelName = "gemini-2.0-flash"
+  modelName: GeminiModelName = "gemini-2.0-flash",
 ) {
   const gemini = createGeminiClient();
   return gemini(modelName);
@@ -24,7 +24,7 @@ export function getGeminiModel(
 export async function executeGeminiWithRetry<T>(
   operation: (model: any) => Promise<T>,
   modelName: GeminiModelName = "gemini-2.0-flash",
-  maxRetries: number = 3
+  maxRetries: number = 3,
 ): Promise<T> {
   let lastError: any = null;
 
@@ -36,14 +36,13 @@ export async function executeGeminiWithRetry<T>(
     } catch (error: any) {
       console.warn(
         `Gemini API call failed (attempt ${attempt + 1}/${maxRetries}):`,
-        error.message
+        error.message,
       );
 
       // Check if this is a quota error and rotate key
       const keyRotated = handleQuotaError("gemini", error);
 
       if (keyRotated && attempt < maxRetries - 1) {
-        console.log(`🔄 Rotated Gemini key due to quota error, retrying...`);
         continue; // Try with next key
       }
 
@@ -60,7 +59,7 @@ export async function executeGeminiWithRetry<T>(
  * Create a streaming Gemini model with key rotation
  */
 export function createStreamingGeminiModel(
-  modelName: GeminiModelName = "gemini-2.0-flash"
+  modelName: GeminiModelName = "gemini-2.0-flash",
 ) {
   const gemini = createGeminiClient();
   return gemini(modelName);
@@ -70,7 +69,7 @@ export function createStreamingGeminiModel(
  * Get a Gemini model for streaming (alias for createStreamingGeminiModel)
  */
 export function getStreamingGeminiModel(
-  modelName: GeminiModelName = "gemini-2.0-flash"
+  modelName: GeminiModelName = "gemini-2.0-flash",
 ) {
   return createStreamingGeminiModel(modelName);
 }

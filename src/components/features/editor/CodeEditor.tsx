@@ -1,12 +1,21 @@
 "use client";
-import MonacoEditor from "@monaco-editor/react";
 import { useEditorStore, getLanguageConfig } from "./editorStore";
-import { useRef, useEffect, useState, useCallback } from "react";
+import {
+  useRef,
+  useEffect,
+  useState,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
 import { toast } from "sonner";
 import Tabs from "./Tabs";
 import { useThemeStore } from "../themes/theme-store";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
+
+// Lazy load Monaco Editor to reduce initial bundle size
+const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
 // Dynamic imports for monaco-vim and prettier to avoid SSR issues
 let initVimMode: any = null;
@@ -37,7 +46,8 @@ const loadPrettier = async () => {
       prettier = (await import("prettier/standalone")).default;
       prettierPluginBabel = (await import("prettier/plugins/babel")).default;
       prettierPluginEstree = (await import("prettier/plugins/estree")).default;
-      prettierPluginTypeScript = (await import("prettier/plugins/typescript")).default;
+      prettierPluginTypeScript = (await import("prettier/plugins/typescript"))
+        .default;
       // Load Java plugin for prettier
       try {
         prettierPluginJava = (await import("prettier-plugin-java")).default;
@@ -74,7 +84,7 @@ export default function CodeEditorComponent() {
     tabSize,
     insertSpaces,
     formatOnSave,
-    isFormatSupported
+    isFormatSupported,
   } = useEditorStore();
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
   const [isFormatting, setIsFormatting] = useState(false);
@@ -107,65 +117,73 @@ export default function CodeEditorComponent() {
       statusBarRef.current.innerHTML = "";
     }
     // Force re-mount by changing key
-    setEditorKey(prev => prev + 1);
+    setEditorKey((prev) => prev + 1);
   }, [isVimModeEnabled]);
 
   // Format code function
-  const formatCode = useCallback(async (code: string, language: string): Promise<string> => {
-    if (!prettier) {
-      await loadPrettier();
-    }
-    if (!prettier) {
-      throw new Error("Prettier is not available");
-    }
-    let parser: string;
-    let plugins: any[] = [];
-    switch (language) {
-      case "javascript":
-        parser = "babel";
-        plugins = [prettierPluginBabel, prettierPluginEstree];
-        break;
-      case "typescript":
-        parser = "typescript";
-        plugins = [prettierPluginTypeScript, prettierPluginEstree];
-        break;
-      case "java":
-        if (!prettierPluginJava) {
-          throw new Error("Java formatting plugin is not available");
-        }
-        parser = "java";
-        plugins = [prettierPluginJava];
-        break;
-      default:
-        throw new Error(`Formatting not supported for ${language}`);
-    }
-    const options = {
-      parser,
-      plugins,
-      printWidth: 80,
-      tabWidth: tabSize,
-      useTabs: !insertSpaces,
-      semi: true,
-      singleQuote: language == "javascript" || language == "typescript",
-      quoteProps: "as-needed" as const,
-      trailingComma: "es5" as const,
-      bracketSpacing: true,
-      bracketSameLine: false,
-      arrowParens: "avoid" as const,
-    };
-    return await prettier.format(code, options);
-  }, [tabSize, insertSpaces]);
+  const formatCode = useCallback(
+    async (code: string, language: string): Promise<string> => {
+      if (!prettier) {
+        await loadPrettier();
+      }
+      if (!prettier) {
+        throw new Error("Prettier is not available");
+      }
+      let parser: string;
+      let plugins: any[] = [];
+      switch (language) {
+        case "javascript":
+          parser = "babel";
+          plugins = [prettierPluginBabel, prettierPluginEstree];
+          break;
+        case "typescript":
+          parser = "typescript";
+          plugins = [prettierPluginTypeScript, prettierPluginEstree];
+          break;
+        case "java":
+          if (!prettierPluginJava) {
+            throw new Error("Java formatting plugin is not available");
+          }
+          parser = "java";
+          plugins = [prettierPluginJava];
+          break;
+        default:
+          throw new Error(`Formatting not supported for ${language}`);
+      }
+      const options = {
+        parser,
+        plugins,
+        printWidth: 80,
+        tabWidth: tabSize,
+        useTabs: !insertSpaces,
+        semi: true,
+        singleQuote: language == "javascript" || language == "typescript",
+        quoteProps: "as-needed" as const,
+        trailingComma: "es5" as const,
+        bracketSpacing: true,
+        bracketSameLine: false,
+        arrowParens: "avoid" as const,
+      };
+      return await prettier.format(code, options);
+    },
+    [tabSize, insertSpaces],
+  );
 
   // Handle format code action
   const handleFormatCode = useCallback(async () => {
     if (!activeTab || !isFormatSupported()) {
       const config = activeTab ? getLanguageConfig(activeTab.language) : null;
-      toast.error(`Code formatting is not yet supported for ${config?.displayName || 'this language'}`);
+      toast.error(
+        `Code formatting is not yet supported for ${config?.displayName || "this language"}`,
+      );
       return;
     }
     setIsFormatting(true);
     try {
-      const formattedCode = await formatCode(activeTab.code, activeTab.language);
+      const formattedCode = await formatCode(
+        activeTab.code,
+        activeTab.language,
+      );
       updateTab(activeTab.id, { code: formattedCode });
       toast.success("Code formatted successfully!");
     } catch (error: any) {
@@ -190,7 +208,7 @@ export default function CodeEditorComponent() {
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.updateOptions({
-        lineNumbers: relativeLineNumbers ? 'relative' : 'on'
+        lineNumbers: relativeLineNumbers ? "relative" : "on",
       });
     }
   }, [relativeLineNumbers]);
@@ -199,7 +217,7 @@ export default function CodeEditorComponent() {
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.updateOptions({
-        wordWrap: wordWrap ? 'on' : 'off'
+        wordWrap: wordWrap ? "on" : "off",
       });
     }
   }, [wordWrap]);
@@ -246,70 +264,83 @@ export default function CodeEditorComponent() {
       )}
 
       <div className="flex-1 overflow-hidden">
-        <MonacoEditor
-          key={editorKey} // Force re-mount when vim mode changes
-          height="100%"
-          language={activeTab.language === 'typescript' ? 'typescript' : activeTab.language}
-          value={activeTab.code}
-          theme={themeState.currentMode === "dark" ? "vs-dark" : "light"}
-          loading={<MonacoLoader />}
-          options={{
-            fontSize,
-            minimap: { enabled: false },
-            lineNumbers: relativeLineNumbers ? 'relative' : 'on',
-            formatOnType: true,
-            formatOnPaste: true,
-            wordWrap: wordWrap ? 'on' : 'off',
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            tabSize,
-            insertSpaces,
-            renderWhitespace: "selection",
-            smoothScrolling: true,
-            cursorBlinking: "smooth",
-            fontLigatures: true,
-            bracketPairColorization: { enabled: true },
-            quickSuggestions: true,
-            suggestOnTriggerCharacters: true,
-            acceptSuggestionOnEnter: "on",
-            snippetSuggestions: "top",
-          }}
-          onMount={async (editor) => {
-            editorRef.current = editor;
+        <Suspense fallback={<MonacoLoader />}>
+          <MonacoEditor
+            key={editorKey} // Force re-mount when vim mode changes
+            height="100%"
+            language={
+              activeTab.language === "typescript"
+                ? "typescript"
+                : activeTab.language
+            }
+            value={activeTab.code}
+            theme={themeState.currentMode === "dark" ? "vs-dark" : "light"}
+            loading={<MonacoLoader />}
+            options={{
+              fontSize,
+              minimap: { enabled: false },
+              lineNumbers: relativeLineNumbers ? "relative" : "on",
+              formatOnType: true,
+              formatOnPaste: true,
+              wordWrap: wordWrap ? "on" : "off",
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize,
+              insertSpaces,
+              renderWhitespace: "selection",
+              smoothScrolling: true,
+              cursorBlinking: "smooth",
+              fontLigatures: true,
+              bracketPairColorization: { enabled: true },
+              quickSuggestions: true,
+              suggestOnTriggerCharacters: true,
+              acceptSuggestionOnEnter: "on",
+              snippetSuggestions: "top",
+            }}
+            onMount={async (editor) => {
+              editorRef.current = editor;
 
-            // Initialize vim mode if enabled
-            if (isVimModeEnabled && statusBarRef.current) {
-              await loadVimMode();
-              if (initVimMode) {
-                try {
-                  vimModeRef.current = initVimMode(editor, statusBarRef.current);
-                  // Add custom mappings after initialization
-                  setTimeout(() => {
-                    if (VimMode?.Vim?.map) {
-                      VimMode.Vim.map('jj', '<Esc>', 'insert');
-                      VimMode.Vim.map('jk', '<Esc>', 'insert');
-                    }
-                  }, 100);
-                  // Fix: Add format shortcut for Vim mode using Vim's key mapping
-                  // This will map <leader>f in normal mode to trigger formatting
-                  setTimeout(() => {
-                    if (VimMode?.Vim?.defineEx) {
-                      // :Format command in Vim
-                      VimMode.Vim.defineEx('Format', '', function (_cm: any, _input: any) {
-                        handleFormatCode();
-                      });
-                    }
-                  }, 200);
-                } catch (error) {
-                  console.error("Error initializing vim mode:", error);
+              // Initialize vim mode if enabled
+              if (isVimModeEnabled && statusBarRef.current) {
+                await loadVimMode();
+                if (initVimMode) {
+                  try {
+                    vimModeRef.current = initVimMode(
+                      editor,
+                      statusBarRef.current,
+                    );
+                    // Add custom mappings after initialization
+                    setTimeout(() => {
+                      if (VimMode?.Vim?.map) {
+                        VimMode.Vim.map("jj", "<Esc>", "insert");
+                        VimMode.Vim.map("jk", "<Esc>", "insert");
+                      }
+                    }, 100);
+                    // Fix: Add format shortcut for Vim mode using Vim's key mapping
+                    // This will map <leader>f in normal mode to trigger formatting
+                    setTimeout(() => {
+                      if (VimMode?.Vim?.defineEx) {
+                        // :Format command in Vim
+                        VimMode.Vim.defineEx(
+                          "Format",
+                          "",
+                          function (_cm: any, _input: any) {
+                            handleFormatCode();
+                          },
+                        );
+                      }
+                    }, 200);
+                  } catch (error) {
+                    console.error("Error initializing vim mode:", error);
+                  }
                 }
               }
-            }
-          }}
-          onChange={(value) => {
-            updateTab(activeTab.id, { code: value ?? "" });
-          }}
-        />
+            }}
+            onChange={(value) => {
+              updateTab(activeTab.id, { code: value ?? "" });
+            }}
+          />
+        </Suspense>
       </div>
     </div>
   );

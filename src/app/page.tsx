@@ -425,44 +425,6 @@ export default function Home() {
 
   const quickEase = [0.4, 0, 0.2, 1] as const;
 
-  // ## NEW: Set the initial render flag after the first render
-  useEffect(() => {
-    // Small delay to ensure the component has fully mounted
-    const timer = setTimeout(() => {
-      setHasInitiallyRendered(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (isTransitioning) return;
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.shiftKey &&
-        event.key.toLowerCase() === "f"
-      ) {
-        event.preventDefault();
-        toggleViewMode();
-      }
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.key.toLowerCase() === "b" &&
-        viewMode === "normal"
-      ) {
-        event.preventDefault();
-        togglePanel();
-      }
-      // ## CHANGE: Renamed function call to exitCodeMode ##
-      if (event.key === "Escape" && viewMode === "code") {
-        event.preventDefault();
-        exitCodeMode();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [viewMode, isTransitioning]);
-
   const toggleViewMode = useCallback(() => {
     if (isTransitioning) return;
     setIsTransitioning(true);
@@ -601,6 +563,45 @@ export default function Home() {
   const { hasApiKeys } = useCredentialsStore();
   const { data: session, status } = useSession();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  // ## NEW: Set the initial render flag after the first render
+  useEffect(() => {
+    // Small delay to ensure the component has fully mounted
+    const timer = setTimeout(() => {
+      setHasInitiallyRendered(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Keyboard event handlers
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isTransitioning) return;
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "f"
+      ) {
+        event.preventDefault();
+        toggleViewMode();
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "b" &&
+        viewMode === "normal"
+      ) {
+        event.preventDefault();
+        togglePanel();
+      }
+      // ## CHANGE: Renamed function call to exitCodeMode ##
+      if (event.key === "Escape" && viewMode === "code") {
+        event.preventDefault();
+        exitCodeMode();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [viewMode, isTransitioning, exitCodeMode, togglePanel, toggleViewMode]);
 
   return (
     <Providers>
